@@ -1,4 +1,5 @@
 import type { Editor, Range } from '@tiptap/core';
+import { markNextMathBlockForEdit } from '../nodes/math-block';
 
 export type SlashItem = {
   title: string;
@@ -82,6 +83,7 @@ export const SLASH_ITEMS: SlashItem[] = [
     title: 'Math block',
     keywords: ['math', 'latex', 'equation', '数式'],
     command: (editor, range) => {
+      markNextMathBlockForEdit();
       editor
         .chain()
         .focus()

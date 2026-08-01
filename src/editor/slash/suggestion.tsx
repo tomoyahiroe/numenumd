@@ -41,11 +41,11 @@ export const SlashMenu = forwardRef<SlashMenuHandle, SlashMenuProps>(
           return event.key === 'Enter';
         }
 
-        if (event.key === 'ArrowUp') {
+        if (event.key === 'ArrowUp' || (event.ctrlKey && event.key === 'p')) {
           setSelectedIndex((prev) => (prev + items.length - 1) % items.length);
           return true;
         }
-        if (event.key === 'ArrowDown') {
+        if (event.key === 'ArrowDown' || (event.ctrlKey && event.key === 'n')) {
           setSelectedIndex((prev) => (prev + 1) % items.length);
           return true;
         }

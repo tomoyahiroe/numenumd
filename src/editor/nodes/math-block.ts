@@ -1,6 +1,16 @@
 import { Node, mergeAttributes, nodeInputRule } from '@tiptap/core';
 import katex from 'katex';
 
+// ユーザー操作(`$$` 入力・スラッシュメニュー)で「いま」作られた mathBlock は
+// 即編集モードで開きたい。一方、ファイル読み込みで復元された空の mathBlock が
+// フォーカスを奪ってはならない。NodeView 生成時にはトランザクションの出自が
+// 分からないため、作成経路がこのフラグを立て、直後の NodeView 生成が消費する。
+let openNextMathBlockInEdit = false;
+
+export function markNextMathBlockForEdit(): void {
+  openNextMathBlockInEdit = true;
+}
+
 export const MathBlock = Node.create({
   name: 'mathBlock',
   group: 'block',
@@ -30,7 +40,10 @@ export const MathBlock = Node.create({
       nodeInputRule({
         find: /^\$\$\s$/,
         type: this.type,
-        getAttributes: () => ({ latex: '' }),
+        getAttributes: () => {
+          markNextMathBlockForEdit();
+          return { latex: '' };
+        },
       }),
     ];
   },
@@ -47,6 +60,7 @@ export const MathBlock = Node.create({
         if ($from.parent.textContent !== '$$') return false;
         const from = $from.before();
         const to = $from.after();
+        markNextMathBlockForEdit();
         return this.editor
           .chain()
           .command(({ tr }) => {
@@ -100,7 +114,9 @@ export const MathBlock = Node.create({
         textarea.className = 'numenumd-math-block-edit';
         textarea.value = currentNode.attrs.latex;
         dom.appendChild(textarea);
-        textarea.focus();
+        // NodeView 生成直後は dom がまだドキュメントに挿入されておらず
+        // 同期 focus() が空振りするため、アタッチ完了後に focus する。
+        queueMicrotask(() => textarea.focus());
 
         const finish = () => {
           commit(textarea.value);
@@ -115,7 +131,12 @@ export const MathBlock = Node.create({
         });
       };
 
-      renderDisplay();
+      if (openNextMathBlockInEdit && currentNode.attrs.latex === '') {
+        openNextMathBlockInEdit = false;
+        renderEdit();
+      } else {
+        renderDisplay();
+      }
 
       return {
         dom,

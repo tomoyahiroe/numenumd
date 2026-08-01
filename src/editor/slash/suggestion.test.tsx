@@ -113,6 +113,59 @@ describe('SlashMenu keyboard handling (Finding 2 regression)', () => {
     expect(handled).toBe(false);
   });
 
+  it('moves selection down with Ctrl+n and up with Ctrl+p (emacs style)', async () => {
+    const { act } = await import('@testing-library/react');
+    const ref = createRef<SlashMenuHandle>();
+    const command = vi.fn();
+    render(<SlashMenu ref={ref} items={SLASH_ITEMS} command={command} />);
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = ref.current?.onKeyDown({
+        event: new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }),
+      });
+    });
+    expect(handled).toBe(true);
+    act(() => {
+      ref.current?.onKeyDown({
+        event: new KeyboardEvent('keydown', { key: 'Enter' }),
+      });
+    });
+    expect(command).toHaveBeenCalledWith(SLASH_ITEMS[1]);
+
+    command.mockClear();
+    act(() => {
+      // from index 1: Ctrl+p twice wraps to the last item
+      ref.current?.onKeyDown({
+        event: new KeyboardEvent('keydown', { key: 'p', ctrlKey: true }),
+      });
+      ref.current?.onKeyDown({
+        event: new KeyboardEvent('keydown', { key: 'p', ctrlKey: true }),
+      });
+    });
+    act(() => {
+      ref.current?.onKeyDown({
+        event: new KeyboardEvent('keydown', { key: 'Enter' }),
+      });
+    });
+    expect(command).toHaveBeenCalledWith(SLASH_ITEMS[SLASH_ITEMS.length - 1]);
+  });
+
+  it('does not treat plain n/p (without Ctrl) as navigation', async () => {
+    const { act } = await import('@testing-library/react');
+    const ref = createRef<SlashMenuHandle>();
+    const command = vi.fn();
+    render(<SlashMenu ref={ref} items={SLASH_ITEMS} command={command} />);
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = ref.current?.onKeyDown({
+        event: new KeyboardEvent('keydown', { key: 'n' }),
+      });
+    });
+    expect(handled).toBe(false);
+  });
+
   it('still selects the highlighted item on Enter when there are matches', () => {
     const ref = createRef<SlashMenuHandle>();
     const command = vi.fn();

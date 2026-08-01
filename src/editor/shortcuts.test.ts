@@ -33,6 +33,42 @@ describe('mathBlock input automation', () => {
   });
 });
 
+describe('bare "[] " task list conversion', () => {
+  // `@tiptap/extension-task-item` の標準 inputRegex
+  // (`/^\s*(\[([( |x])?\])\s$/`) は括弧内の文字が省略可能なため、
+  // `"- [ ] "` 形式に加えて素の `"[] "` / `"[x] "` も直接
+  // taskList>taskItem への変換をトリガーする(findWrapping が
+  // 必要な taskList ラッパーを自動挿入する)。これはこちら独自の追加実装
+  // ではなく TaskItem のデフォルト動作の回帰カバレッジであり、将来
+  // `@tiptap/extension-task-item` の regex が変わった場合に検知できる
+  // ようにするための恒久テスト。
+  it('converts "[] " at the start of a paragraph into an unchecked taskItem', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<p></p>');
+    const { view } = editor;
+    view.someProp('handleTextInput', (f) =>
+      f(view, 1, 1, '[] ', () => view.state.tr),
+    );
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'taskList',
+      content: [{ type: 'taskItem', attrs: { checked: false } }],
+    });
+  });
+
+  it('converts "[x] " at the start of a paragraph into a checked taskItem', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<p></p>');
+    const { view } = editor;
+    view.someProp('handleTextInput', (f) =>
+      f(view, 1, 1, '[x] ', () => view.state.tr),
+    );
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'taskList',
+      content: [{ type: 'taskItem', attrs: { checked: true } }],
+    });
+  });
+});
+
 describe('Cmd+K link shortcut', () => {
   it('sets a link on the current selection using window.prompt', () => {
     const editor = makeEditor();

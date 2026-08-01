@@ -7,7 +7,7 @@ import { getSchema, type JSONContent } from '@tiptap/core';
 import { Node as PMNode } from 'prosemirror-model';
 import { buildExtensions } from '../editor/extensions';
 import { joinFrontmatter } from './frontmatter';
-import { findMathSpans } from './math-spans';
+import { findVerbatimSpans } from './verbatim-spans';
 
 const schema = getSchema(buildExtensions());
 const d = defaultMarkdownSerializer;
@@ -62,13 +62,23 @@ function isInsideRange(
  * 適用すると LaTeX コマンド `\alpha` が `\\alpha` に、`$x_{i}$` が
  * `$x\_{i}$` に、`$a^{*}$` が `$a^{\*}$` になるなど、数式が壊れてしまう。
  *
+ * 同じ問題は、同様にプレーンテキストとして保持している他の記法でも起きる:
+ * 画像 `![alt](src)` は `!\[alt\](src)` に化けてどのレンダラでも表示されなくなり、
+ * GFM 脚注マーカー `[^1]` は `\[^1\]` に化ける。どちらも無警告・復旧不能で、
+ * 「ユーザーの Markdown を絶対に失わない」原則への正面違反だった。
+ *
  * 対策は二段構え:
- * 1. `$...$` の範囲内にある文字は一切エスケープしない(`findMathSpans` /
- *    `isInsideRange`)。`findMathSpans` は `parse.ts` の `math_inline`
- *    ルールと全く同じ判定ロジック(`./math-spans`)を共有しており、
- *    検出規則が食い違うと「パース時には数式として保護されたのに
+ * 1. `$...$` / `![...](...)` / `[^...]` の範囲内にある文字は一切エスケープ
+ *    しない(`findVerbatimSpans` / `isInsideRange`)。`findVerbatimSpans` は
+ *    `parse.ts` の `math_inline` / `image_verbatim` / `footnote_marker`
+ *    ルールと全く同じ判定ロジック(`./verbatim-spans`・`./math-spans`)を
+ *    共有しており、検出規則が食い違うと「パース時には保護されたのに
  *    シリアライズ時にはエスケープされる(またはその逆)」という往復破壊が
  *    起きるため、必ず同じ実装を使う。
+ *    なお免除は `!` で始まる画像形式と `[^` 脚注のみで、地の文に現れた
+ *    `[t](u)` 風の文字列は従来どおりエスケープする(通常リンクは `link`
+ *    マークから serializer が正しく生成するため、免除すると再パース時に
+ *    意図しないリンクへ化けてしまう)。
  * 2. 範囲外のバックスラッシュについても、CommonMark でエスケープ記号として
  *    意味を持つのは直後が ASCII 記号(punctuation)の場合のみで、`\` の
  *    直後が英字などの場合はパース時にバックスラッシュはそのまま残る
@@ -82,7 +92,7 @@ function safeEsc(
   str: string,
   startOfLine = false,
 ): string {
-  const mathRanges = findMathSpans(str);
+  const verbatimRanges = findVerbatimSpans(str);
   // `- [x] done` の先頭 `[` / `]`(offset 0 / 2)だけエスケープを免除する。
   // `startOfLine`(= `MarkdownSerializerState.atBlockStart`)はブロック先頭の
   // 最初のテキストでのみ true になるため、当該アイテムの先頭テキストだけに
@@ -98,7 +108,7 @@ function safeEsc(
   }
   let result = str.replace(/[`*\\~[\]_]/g, (m: string, offset: number) => {
     if (offset < taskMarkerSkipLen) return m;
-    if (isInsideRange(mathRanges, offset)) return m;
+    if (isInsideRange(verbatimRanges, offset)) return m;
     if (
       m === '_' &&
       offset > 0 &&

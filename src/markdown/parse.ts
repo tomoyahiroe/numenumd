@@ -11,6 +11,7 @@ import { MarkdownParser, type ParseSpec } from 'prosemirror-markdown';
 import { buildExtensions } from '../editor/extensions';
 import { splitFrontmatter } from './frontmatter';
 import { matchMathSpanAt } from './math-spans';
+import { matchFootnoteMarkerAt, matchImageSpanAt } from './verbatim-spans';
 
 const TASK_ITEM_RE = /^\[([ xX])\]\s+/;
 
@@ -93,6 +94,61 @@ function mathInlineRule(state: StateInline, silent: boolean): boolean {
     token.content = state.src.slice(start, closePos + 1);
   }
   state.pos = closePos + 1;
+  return true;
+}
+
+/**
+ * 画像記法 `![alt](src)` / `![alt][ref]` を、markdown-it の `image` ルールより
+ * 先に verbatim なテキストとして切り出すインラインルール(`math_inline` と同手法)。
+ *
+ * スキーマに `image` ノードが無いため、画像はいずれにせよプレーンテキストとして
+ * 保持するしかない(`inlineFallbackToTextRule` を参照)。ただしそのフォールバック
+ * 経路は `image` トークンの属性から `![alt](src)` を組み立て直すため、
+ * 参照形式 `![alt][ref]` が inline 形式へ潰れる・`<...>` 括りの src や
+ * シングルクォートの title といった元の書き方が失われる、という不可逆な
+ * 正規化が起きる。ここで原文をそのまま1個の `text` トークンとして切り出すことで、
+ * ユーザーが書いたバイト列をそのまま往復させる。
+ *
+ * 判定は `matchImageSpanAt`(`./verbatim-spans`)に委譲し、`serialize.ts` の
+ * `safeEsc` と全く同じロジックを共有する(検出規則が食い違うと往復が壊れる)。
+ */
+function imageVerbatimRule(state: StateInline, silent: boolean): boolean {
+  const start = state.pos;
+  const end = matchImageSpanAt(state.src, start, state.posMax);
+  if (end === null) return false;
+
+  if (!silent) {
+    const token = state.push('text', '', 0);
+    token.content = state.src.slice(start, end);
+  }
+  state.pos = end;
+  return true;
+}
+
+/**
+ * GFM 脚注マーカー `[^label]` を、markdown-it の `link` ルールより先に verbatim な
+ * テキストとして切り出すインラインルール。
+ *
+ * markdown-it(CommonMark)は脚注を知らないため、定義行 `[^1]: note` を
+ * ただの参照リンク定義として `state.env.references` に登録してしまう。すると
+ * 本文中の `[^1]` が参照リンクとして解決され、保存すると `text[^1](note)` という
+ * 別物の記法に化ける。定義行が無い場合も `safeEsc` によって `a\[^note\] b` に
+ * エスケープされてしまう。どちらもユーザーの記法を無警告で壊す。
+ *
+ * 定義行そのもの(`[^1]: note`)は `raw_reference`(`wrapAsRawBlock('reference')`)
+ * が `rawBlock` として verbatim 保全するため、ここではインラインのマーカーだけを
+ * 保護すればよい。
+ */
+function footnoteMarkerRule(state: StateInline, silent: boolean): boolean {
+  const start = state.pos;
+  const end = matchFootnoteMarkerAt(state.src, start, state.posMax);
+  if (end === null) return false;
+
+  if (!silent) {
+    const token = state.push('text', '', 0);
+    token.content = state.src.slice(start, end);
+  }
+  state.pos = end;
   return true;
 }
 
@@ -289,7 +345,11 @@ function buildMarkdownIt(): MarkdownItInstance {
       alt: ['paragraph', 'reference', 'blockquote'],
     },
   );
+  // verbatim 保全系のインラインルールは、対応する組み込みルール
+  // (`escape` / `image` / `link`)より前に置く必要があるため `escape` の前に挿す。
   md.inline.ruler.before('escape', 'math_inline', mathInlineRule);
+  md.inline.ruler.before('escape', 'image_verbatim', imageVerbatimRule);
+  md.inline.ruler.before('escape', 'footnote_marker', footnoteMarkerRule);
   md.core.ruler.before('inline', 'task_list', taskListRule);
   md.core.ruler.push('inline_fallback_to_text', inlineFallbackToTextRule);
   return md;

@@ -189,6 +189,99 @@ describe('mixed task/plain list keeps its checkbox syntax (final review)', () =>
   });
 });
 
+// マージゲート Blocking: 画像記法が保存で必ず壊れる問題の回帰テスト。
+// `safeEsc` が `[` / `]` を無条件エスケープしていたため `![alt](a.png)` が
+// `!\[alt\](a.png)` に化け、どのレンダラでも画像が表示されなくなっていた
+// (無警告・復旧不能)。parse.ts の image_verbatim ルール(記法を verbatim
+// テキストとして切り出す)と serialize.ts の safeEsc のスキップレンジ
+// (`verbatim-spans` 経由)の両方が効いて初めて全て通る。
+describe('image syntax survives the round trip (merge gate blocker)', () => {
+  const cases: Array<[string, string]> = [
+    ['inline', 'See ![alt](img/a.png) inline.\n'],
+    ['standalone line', '![alt](img/a.png)\n'],
+    ['inside a heading', '# Head ![alt](img/a.png)\n'],
+    ['reference form', '![alt][ref]\n\n[ref]: img/a.png\n'],
+  ];
+
+  for (const [name, md] of cases) {
+    it(`serializes the ${name} form byte-for-byte`, () => {
+      expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+    });
+
+    it(`keeps the ${name} form byte-identical through mdToMd`, async () => {
+      const once = await mdToMd(md);
+      expect(once).toBe(md);
+      expect(await mdToMd(once)).toBe(once);
+    });
+  }
+
+  it('keeps a titled image and preserves the title text', () => {
+    const md = "![alt](img/a.png 'Caption')\n";
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  it('keeps an image nested inside a bold span', () => {
+    const md = '**![alt](img/a.png)**\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  it('never emits an escaped bang-bracket for any image form', () => {
+    for (const [, md] of cases) {
+      expect(serializeMarkdown(parseMarkdown(md))).not.toContain('!\\[');
+    }
+  });
+
+  it('still escapes a plain (non-image) bracket run in prose', () => {
+    // 免除は `!` で始まる画像形式と `[^` 脚注のみ。地の文の `[t](u)` 風文字列は
+    // 従来どおりエスケープされてよい(通常リンクは link マークから生成される)。
+    const doc = parseMarkdown('a \\[t\\](u) b\n');
+    expect(serializeMarkdown(doc)).toBe('a \\[t\\](u) b\n');
+  });
+
+  it('leaves a real link mark untouched', () => {
+    const md = 'see [t](https://x.jp) here\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+});
+
+// マージゲート 同根 Finding: GFM 脚注風記法の破壊。
+// (a) `text[^1]` + 定義行 `[^1]: note` → markdown-it が定義行を参照定義として
+//     解決し、インライン `[^1]` がリンク化されて `text[^1](note)` になっていた。
+// (b) 定義の無い `a[^note] b` → safeEsc により `a\[^note\] b` になっていた。
+describe('GFM footnote syntax survives the round trip (merge gate blocker)', () => {
+  it('does not turn an inline marker into a link when a definition exists', () => {
+    const doc = parseMarkdown('text[^1]\n\n[^1]: note\n');
+    const marks =
+      doc.content?.[0]?.content?.flatMap((n) => n.marks ?? []) ?? [];
+    expect(marks.some((m) => m.type === 'link')).toBe(false);
+  });
+
+  it('keeps the definition line verbatim as a rawBlock', () => {
+    const doc = parseMarkdown('text[^1]\n\n[^1]: note\n');
+    expect(doc.content?.[1]).toMatchObject({
+      type: 'rawBlock',
+      attrs: { content: '[^1]: note' },
+    });
+  });
+
+  it('serializes marker + definition byte-for-byte', () => {
+    const md = 'text[^1]\n\n[^1]: note\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  it('keeps marker + definition byte-identical through mdToMd', async () => {
+    const md = 'text[^1]\n\n[^1]: note\n';
+    const once = await mdToMd(md);
+    expect(once).toBe(md);
+    expect(await mdToMd(once)).toBe(once);
+  });
+
+  it('does not escape a marker that has no definition', () => {
+    const md = 'a[^note] b\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+});
+
 // レビュー Finding 2: mdToMd が frontmatter ごと Prettier に通してしまい、
 // verbatim 書き戻しの原則(numenumd プロジェクトルール)に違反する問題の回帰テスト。
 describe('frontmatter stays verbatim through mdToMd (review finding 2)', () => {

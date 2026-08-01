@@ -1,11 +1,8 @@
 {
   "name": "numenumd-mvp",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "version": "0.1.0",
+  "private": true,
+  "description": "Notion-like WYSIWYG editor for local Markdown files",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -26,8 +23,6 @@
       "prettier --write"
     ]
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "dependencies": {
     "@tiptap/core": "^2.27.2",

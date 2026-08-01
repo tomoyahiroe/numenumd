@@ -1,0 +1,4 @@
+# これらのフィクスチャは意図的に「乱れた」/未整形の Markdown 記法を保持する
+# ためのゴールデンテスト入力なので、prettier --write(lint-staged 経由 / npm
+# run format)で正規化されてしまわないよう対象外にする。
+tests/fixtures/

@@ -14,25 +14,60 @@ const d = defaultMarkdownSerializer;
 const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/;
 
 /**
- * `MarkdownSerializerState.esc()` の既定実装は、素のバックスラッシュを
- * 文脈を問わず常に `\` → `\\` へエスケープする。しかしインライン数式は
- * ノード/マークを持たないプレーンテキストとして保持しているため
- * (Task 4 の方針)、これをそのまま適用すると LaTeX コマンド `\alpha` が
- * `\\alpha` に化けて数式が壊れてしまう。
+ * テキスト中の `$...$`(インライン数式)の範囲を検出する。判定基準は
+ * `parse.ts` の `mathInlineRule` および tiptap 側の Mathematics 拡張の
+ * デコレーション用正規表現(`/\$([^\$]*)\$/gi`)と揃えた素朴なペア検出
+ * (閉じる `$` が見つかる・空でない・改行をまたがない)。
  *
- * CommonMark でバックスラッシュがエスケープ記号として意味を持つのは
- * 直後が ASCII 記号(punctuation)の場合のみで、`\` の直後が英字などの
- * 場合はパース時にバックスラッシュはそのまま残る(エスケープ扱いされない)。
- * そのため、直後が ASCII 記号でないバックスラッシュはエスケープ不要と
- * 判断し、既定の esc() 相当のロジックにこの条件だけを追加した派生実装で
- * 上書きする(その他の文字クラスの扱いは既定実装と同一)。
+ * `parse.ts` 側で `$...$` の中身は他のインラインルールから保護されて
+ * verbatim なテキストとして doc に保持されているため、シリアライズ時も
+ * この範囲内の文字は一切エスケープしてはいけない(そうしないと `_` や `*`
+ * のような LaTeX で頻出する文字がエスケープされて数式が壊れてしまう)。
+ */
+function findDollarMathRanges(str: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const re = /\$[^$\n]+\$/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(str)) !== null) {
+    ranges.push([m.index, m.index + m[0].length]);
+  }
+  return ranges;
+}
+
+function isInsideRange(
+  ranges: Array<[number, number]>,
+  index: number,
+): boolean {
+  return ranges.some(([start, end]) => index >= start && index < end);
+}
+
+/**
+ * `MarkdownSerializerState.esc()` の既定実装は、素のバックスラッシュを
+ * 文脈を問わず常に `\` → `\\` へエスケープし、`` ` `` `*` `~` `[` `]` `_`
+ * も常時エスケープする。しかしインライン数式はノード/マークを持たない
+ * プレーンテキストとして保持しているため(Task 4 の方針)、これをそのまま
+ * 適用すると LaTeX コマンド `\alpha` が `\\alpha` に、`$x_{i}$` が
+ * `$x\_{i}$` に、`$a^{*}$` が `$a^{\*}$` になるなど、数式が壊れてしまう。
+ *
+ * 対策は二段構え:
+ * 1. `$...$` の範囲内にある文字は一切エスケープしない
+ *    (`findDollarMathRanges` / `isInsideRange`)。
+ * 2. 範囲外のバックスラッシュについても、CommonMark でエスケープ記号として
+ *    意味を持つのは直後が ASCII 記号(punctuation)の場合のみで、`\` の
+ *    直後が英字などの場合はパース時にバックスラッシュはそのまま残る
+ *    (エスケープ扱いされない)ため、直後が ASCII 記号でないバックスラッシュは
+ *    エスケープ不要と判断する。
+ *
+ * それ以外の文字クラスの扱いは既定実装と同一。
  */
 function safeEsc(
   this: MarkdownSerializerState,
   str: string,
   startOfLine = false,
 ): string {
+  const mathRanges = findDollarMathRanges(str);
   let result = str.replace(/[`*\\~[\]_]/g, (m: string, offset: number) => {
+    if (isInsideRange(mathRanges, offset)) return m;
     if (
       m === '_' &&
       offset > 0 &&

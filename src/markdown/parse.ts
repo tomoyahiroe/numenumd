@@ -5,6 +5,7 @@ import type {
   MarkdownIt as MarkdownItInstance,
   StateBlock,
   StateCore,
+  StateInline,
 } from 'markdown-it';
 import { MarkdownParser, type ParseSpec } from 'prosemirror-markdown';
 import { buildExtensions } from '../editor/extensions';
@@ -54,6 +55,55 @@ function mathBlockRule(
   );
   token.markup = '$$';
   token.map = [startLine, state.line];
+  return true;
+}
+
+const DOLLAR = 0x24; // '$'
+const NEWLINE = 0x0a; // '\n'
+
+/**
+ * インライン数式 `$...$` の中身を、CommonMark のバックスラッシュエスケープや
+ * 強調(`*`/`_`)・コードスパンなど他のインラインルールに解釈させず、
+ * verbatim なテキストとして保持するための markdown-it インラインルール。
+ *
+ * numenumd はインライン数式を専用ノード/マークにせず、プレーンテキストとして
+ * 保持する方針(KaTeX による装飾描画は tiptap 側の Mathematics 拡張が担う)。
+ * しかしこのルールを入れないと `$...$` の中身が通常のインラインパイプラインを
+ * 通ってしまい、例えば `\%` や `\{` のような CommonMark のバックスラッシュ
+ * エスケープが解決されて `%` や `{` に化けてしまい、ユーザーの LaTeX が
+ * 書き戻し不能な形で壊れる。
+ *
+ * ここでは `$...$`(閉じる `$` が見つかる・空でない・改行をまたがない・
+ * `$$` に隣接しない)をまるごと1個の `text` トークンとして切り出すことで、
+ * 中身を他のインラインルールから完全に保護する。判定基準は tiptap 側の
+ * Mathematics 拡張が使うデコレーション用正規表現(`/\$([^\$]*)\$/gi`)と
+ * 揃えてある。
+ */
+function mathInlineRule(state: StateInline, silent: boolean): boolean {
+  const start = state.pos;
+  const max = state.posMax;
+  if (state.src.charCodeAt(start) !== DOLLAR) return false;
+  // `$$`(ブロック数式のフェンスと紛らわしい)に隣接する場合は対象外にし、
+  // 通常のテキスト処理に委ねる。
+  if (start + 1 < max && state.src.charCodeAt(start + 1) === DOLLAR)
+    return false;
+  if (start > 0 && state.src.charCodeAt(start - 1) === DOLLAR) return false;
+
+  let pos = start + 1;
+  while (pos < max) {
+    const ch = state.src.charCodeAt(pos);
+    if (ch === NEWLINE) return false;
+    if (ch === DOLLAR) break;
+    pos++;
+  }
+  if (pos >= max) return false; // 閉じる `$` が見つからない(不対の `$`)
+  if (pos === start + 1) return false; // 空の `$$`
+
+  if (!silent) {
+    const token = state.push('text', '', 0);
+    token.content = state.src.slice(start, pos + 1);
+  }
+  state.pos = pos + 1;
   return true;
 }
 
@@ -250,6 +300,7 @@ function buildMarkdownIt(): MarkdownItInstance {
       alt: ['paragraph', 'reference', 'blockquote'],
     },
   );
+  md.inline.ruler.before('escape', 'math_inline', mathInlineRule);
   md.core.ruler.before('inline', 'task_list', taskListRule);
   md.core.ruler.push('inline_fallback_to_text', inlineFallbackToTextRule);
   return md;

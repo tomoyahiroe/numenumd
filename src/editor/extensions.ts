@@ -7,6 +7,7 @@ import Mathematics from '@tiptap/extension-mathematics';
 import { MathBlock } from './nodes/math-block';
 import { RawBlock } from './nodes/raw-block';
 import { Frontmatter } from './nodes/frontmatter';
+import { SlashCommand } from './slash/suggestion';
 
 /**
  * `Link` 拡張には `Mod-k` のデフォルトキーマップが無いため、選択範囲に対して
@@ -44,5 +45,6 @@ export function buildExtensions(): Extensions {
     MathBlock,
     RawBlock,
     Frontmatter,
+    SlashCommand,
   ];
 }

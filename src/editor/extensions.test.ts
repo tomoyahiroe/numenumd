@@ -1,8 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { buildExtensions } from './extensions';
 
-const makeEditor = () => new Editor({ extensions: buildExtensions() });
+// `Editor` は破棄しないと内部の DOM 監視タイマーが動き続け、次のテスト
+// ファイルへ環境が切り替わるタイミングで `document is not defined` の
+// 未処理例外を断続的に発生させる(既存のフレーク要因)。各テスト後に
+// 確実に破棄する。
+const createdEditors: Editor[] = [];
+const makeEditor = () => {
+  const editor = new Editor({ extensions: buildExtensions() });
+  createdEditors.push(editor);
+  return editor;
+};
+
+afterEach(() => {
+  while (createdEditors.length > 0) {
+    createdEditors.pop()?.destroy();
+  }
+});
 
 describe('buildExtensions', () => {
   it('registers all node and mark types', () => {

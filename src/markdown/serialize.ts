@@ -7,32 +7,12 @@ import { getSchema, type JSONContent } from '@tiptap/core';
 import { Node as PMNode } from 'prosemirror-model';
 import { buildExtensions } from '../editor/extensions';
 import { joinFrontmatter } from './frontmatter';
+import { findMathSpans } from './math-spans';
 
 const schema = getSchema(buildExtensions());
 const d = defaultMarkdownSerializer;
 
 const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/;
-
-/**
- * テキスト中の `$...$`(インライン数式)の範囲を検出する。判定基準は
- * `parse.ts` の `mathInlineRule` および tiptap 側の Mathematics 拡張の
- * デコレーション用正規表現(`/\$([^\$]*)\$/gi`)と揃えた素朴なペア検出
- * (閉じる `$` が見つかる・空でない・改行をまたがない)。
- *
- * `parse.ts` 側で `$...$` の中身は他のインラインルールから保護されて
- * verbatim なテキストとして doc に保持されているため、シリアライズ時も
- * この範囲内の文字は一切エスケープしてはいけない(そうしないと `_` や `*`
- * のような LaTeX で頻出する文字がエスケープされて数式が壊れてしまう)。
- */
-function findDollarMathRanges(str: string): Array<[number, number]> {
-  const ranges: Array<[number, number]> = [];
-  const re = /\$[^$\n]+\$/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(str)) !== null) {
-    ranges.push([m.index, m.index + m[0].length]);
-  }
-  return ranges;
-}
 
 function isInsideRange(
   ranges: Array<[number, number]>,
@@ -50,8 +30,12 @@ function isInsideRange(
  * `$x\_{i}$` に、`$a^{*}$` が `$a^{\*}$` になるなど、数式が壊れてしまう。
  *
  * 対策は二段構え:
- * 1. `$...$` の範囲内にある文字は一切エスケープしない
- *    (`findDollarMathRanges` / `isInsideRange`)。
+ * 1. `$...$` の範囲内にある文字は一切エスケープしない(`findMathSpans` /
+ *    `isInsideRange`)。`findMathSpans` は `parse.ts` の `math_inline`
+ *    ルールと全く同じ判定ロジック(`./math-spans`)を共有しており、
+ *    検出規則が食い違うと「パース時には数式として保護されたのに
+ *    シリアライズ時にはエスケープされる(またはその逆)」という往復破壊が
+ *    起きるため、必ず同じ実装を使う。
  * 2. 範囲外のバックスラッシュについても、CommonMark でエスケープ記号として
  *    意味を持つのは直後が ASCII 記号(punctuation)の場合のみで、`\` の
  *    直後が英字などの場合はパース時にバックスラッシュはそのまま残る
@@ -65,7 +49,7 @@ function safeEsc(
   str: string,
   startOfLine = false,
 ): string {
-  const mathRanges = findDollarMathRanges(str);
+  const mathRanges = findMathSpans(str);
   let result = str.replace(/[`*\\~[\]_]/g, (m: string, offset: number) => {
     if (isInsideRange(mathRanges, offset)) return m;
     if (

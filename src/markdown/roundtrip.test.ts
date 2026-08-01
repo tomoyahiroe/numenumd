@@ -70,6 +70,50 @@ describe('inline math survives escaping (review finding 1)', () => {
   }
 });
 
+// レビュー ラウンド2 Finding(ラウンド1の math_inline 修正が持ち込んだ回帰):
+// 素朴な $…$ ペア検出が、地の文中の対になっていない $(金額表記など)を
+// 数式と誤認し、その間に挟まれた強調/コードスパン等のインライン記法を
+// 丸ごと verbatim テキストへ壊してしまっていた問題。
+// Pandoc 流ヒューリスティック(開き $ の直後は非空白、閉じ $ の直前は
+// 非空白かつ直後が数字でない)を parse.ts の math_inline と serialize.ts の
+// safeEsc の双方が共有する `./math-spans` に実装して解消した。
+describe('unpaired prose $ does not swallow other inline markup (review round 2)', () => {
+  it('keeps italic emphasis intact around unpaired dollar amounts', () => {
+    const md = 'The price is $5 and *sale* items are $10 today.\n';
+    const doc = parseMarkdown(md);
+    const marks =
+      doc.content?.[0]?.content?.flatMap((n) => n.marks ?? []) ?? [];
+    expect(marks.some((m) => m.type === 'italic')).toBe(true);
+    expect(serializeMarkdown(doc)).toBe(md);
+  });
+
+  it('keeps inline code intact around unpaired dollar amounts', () => {
+    const md = 'Costs $5 and `code` here $10 today.\n';
+    const doc = parseMarkdown(md);
+    const marks =
+      doc.content?.[0]?.content?.flatMap((n) => n.marks ?? []) ?? [];
+    expect(marks.some((m) => m.type === 'code')).toBe(true);
+    expect(serializeMarkdown(doc)).toBe(md);
+  });
+
+  it('still detects genuine inline math among the same 4 cases as round 1', () => {
+    for (const md of ['$x_{i}$\n', '$\\{a\\}$\n', '$a^{*}$\n', '$50\\%$\n']) {
+      expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+    }
+  });
+
+  it('is idempotent through mdToMd for the prose-with-unpaired-$ cases', async () => {
+    for (const md of [
+      'The price is $5 and *sale* items are $10 today.\n',
+      'Costs $5 and `code` here $10 today.\n',
+    ]) {
+      const once = await mdToMd(md);
+      const twice = await mdToMd(once);
+      expect(twice).toBe(once);
+    }
+  });
+});
+
 // レビュー Finding 2: mdToMd が frontmatter ごと Prettier に通してしまい、
 // verbatim 書き戻しの原則(numenumd プロジェクトルール)に違反する問題の回帰テスト。
 describe('frontmatter stays verbatim through mdToMd (review finding 2)', () => {

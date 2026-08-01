@@ -112,3 +112,37 @@ describe('Cmd+K link shortcut', () => {
     expect(promptSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('Cmd+Shift+X strike shortcut', () => {
+  // spec(docs/superpowers/specs/2026-08-01-numenumd-design.md)は取り消し線を
+  // `Cmd+Shift+X` と定めているが、StarterKit 経由の `@tiptap/extension-strike`
+  // の既定キーマップは `Mod-Shift-s` のみ。`extensions.ts` の
+  // `StrikeExtraKeymap` が `Mod-Shift-x` を追加でバインドしていることを確認する
+  // (既定の `Mod-Shift-s` も引き続き有効であることも併せて確認する)。
+  it('toggles the strike mark on the current selection', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<p>hello world</p>');
+    editor.commands.setTextSelection({ from: 1, to: 6 }); // "hello"
+    const handled = editor.commands.keyboardShortcut('Mod-Shift-x');
+    expect(handled).toBe(true);
+    expect(editor.isActive('strike')).toBe(true);
+  });
+
+  it('toggles the strike mark back off on a second press', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<p>hello world</p>');
+    editor.commands.setTextSelection({ from: 1, to: 6 });
+    editor.commands.keyboardShortcut('Mod-Shift-x');
+    editor.commands.keyboardShortcut('Mod-Shift-x');
+    expect(editor.isActive('strike')).toBe(false);
+  });
+
+  it('the default Mod-Shift-s keymap still works alongside it', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<p>hello world</p>');
+    editor.commands.setTextSelection({ from: 1, to: 6 });
+    const handled = editor.commands.keyboardShortcut('Mod-Shift-s');
+    expect(handled).toBe(true);
+    expect(editor.isActive('strike')).toBe(true);
+  });
+});

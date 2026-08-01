@@ -67,8 +67,9 @@ numenumd(ローカル `.md` を Notion 風 WYSIWYG で編集する Chrome 拡張
 選択範囲またはカーソル位置に対して以下が効くことを確認する。
 
 - `Cmd+B` 太字 / `Cmd+I` 斜体 / `Cmd+E` インラインコード
-- `Cmd+Shift+S` 取り消し線(Tiptap `Strike` 拡張の既定キーマップ。取り消し線の
-  トグルであり、保存の `Cmd+S` とは別物)
+- `Cmd+Shift+X` 取り消し線(`Cmd+Shift+S` も可。前者は `extensions.ts` の
+  `StrikeExtraKeymap` による追加バインド、後者は Tiptap `Strike` 拡張の既定
+  キーマップで、どちらもトグルとして効く。保存の `Cmd+S` とは別物)
 - `Cmd+K` リンク(選択範囲がある状態で押すと URL 入力プロンプトが出る。空文字で
   確定するとリンク解除)
 - `Cmd+Alt+1`〜`Cmd+Alt+6` で見出しレベル1〜6にトグル

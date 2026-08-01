@@ -71,9 +71,9 @@ numenumd カードにある更新(circular arrow)アイコンを押すか、い�
 
 - `# `〜`###### `、`- `、`1. `、`[] `/`[x] `、`> `、` ``` `、`$$` + Enter といった
   入力オートフォーマット。
-- `Cmd+B`(太字)/`Cmd+I`(斜体)/`Cmd+E`(インラインコード)/`Cmd+Shift+S`
-  (取り消し線)/`Cmd+K`(リンク)/`Cmd+Alt+1`〜`Cmd+Alt+6`(見出し1〜6)/
-  `Cmd+S`(保存)。
+- `Cmd+B`(太字)/`Cmd+I`(斜体)/`Cmd+E`(インラインコード)/`Cmd+Shift+X`
+  (取り消し線。StarterKit 既定の `Cmd+Shift+S` も併用可)/`Cmd+K`(リンク)/
+  `Cmd+Alt+1`〜`Cmd+Alt+6`(見出し1〜6)/`Cmd+S`(保存)。
 - `/` から始まるスラッシュメニュー(Heading 1〜3、Bulleted/Numbered/To-do list、
   Quote、Code block、Math block。日本語キーワードでの絞り込みにも対応)。
 - インライン数式 `$…$`(Pandoc 方式のペア判定ヒューリスティックで地の文中の `$`

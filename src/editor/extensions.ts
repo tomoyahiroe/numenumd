@@ -34,6 +34,22 @@ const LinkKeymap = Extension.create({
   },
 });
 
+/**
+ * spec(docs/superpowers/specs/2026-08-01-numenumd-design.md)は取り消し線の
+ * ショートカットを `Cmd+Shift+X` と定めているが、StarterKit 経由の
+ * `@tiptap/extension-strike` の既定キーマップは `Mod-Shift-s` のみである。
+ * 既定を上書きするのではなく、`Mod-Shift-x` を追加で `toggleStrike()` に
+ * バインドする(`Mod-Shift-s` も引き続き有効なまま両方効く状態にする)。
+ */
+const StrikeExtraKeymap = Extension.create({
+  name: 'numenumdStrikeExtraKeymap',
+  addKeyboardShortcuts() {
+    return {
+      'Mod-Shift-x': () => this.editor.commands.toggleStrike(),
+    };
+  },
+});
+
 export function buildExtensions(): Extensions {
   return [
     StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }),
@@ -41,6 +57,7 @@ export function buildExtensions(): Extensions {
     TaskItem.configure({ nested: true }),
     Link.configure({ openOnClick: false }),
     LinkKeymap,
+    StrikeExtraKeymap,
     Mathematics, // インライン $…$ を KaTeX デコレーションで描画
     MathBlock,
     RawBlock,

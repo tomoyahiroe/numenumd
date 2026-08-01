@@ -335,7 +335,16 @@ function buildTokenMap(): Record<string, ParseSpec> {
     em: { mark: 'italic' },
     strong: { mark: 'bold' },
     s: { mark: 'strike' },
-    link: { mark: 'link', getAttrs: (tok) => ({ href: tok.attrGet('href') }) },
+    // title(`[t](href "title")` の第2引数)を落とすとユーザーの記述が
+    // 無音で失われるため、スキーマ側(extensions.ts の LinkWithTitle)に
+    // 足した `title` 属性へ引き渡す。
+    link: {
+      mark: 'link',
+      getAttrs: (tok) => ({
+        href: tok.attrGet('href'),
+        title: tok.attrGet('title') || null,
+      }),
+    },
     code_inline: { mark: 'code', noCloseToken: true },
   };
 }

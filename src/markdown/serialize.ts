@@ -14,6 +14,39 @@ const d = defaultMarkdownSerializer;
 
 const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/;
 
+/** リストアイテム先頭のタスクマーカー(`[x] ` / `[X] ` / `[ ] `)。 */
+const LIST_ITEM_TASK_MARKER_RE = /^\[[ xX]\] /;
+
+/**
+ * `parse.ts` の `taskListRule` は「全アイテムがタスク記法のリスト」だけを
+ * `taskList` に変換する(部分的な変換はリスト構造の分割を伴うため)。
+ * その結果 `- [x] done` と `- plain` が混在したリストは `bulletList` のまま
+ * 保持され、`[x]` は単なる段落テキストになる。ところが `safeEsc` は `[` と `]`
+ * を常時エスケープするため、保存すると `- \[x\] done` に化けてしまい、
+ * GitHub 等の GFM レンダラでチェックボックスとして表示されなくなる
+ * (= ユーザーから見て記法が壊れる)。
+ *
+ * そこで `listItem` のシリアライズ中だけ「先頭のタスクマーカーはエスケープ
+ * しない」ことを `safeEsc` に伝えるフラグを立てる。判定を `safeEsc` の中の
+ * 文字列パターンだけで行うと、リストの文脈でない普通の段落(`[x] foo` で
+ * 始まる本文)まで巻き込んでしまうため、文脈を知っている `listItem` の
+ * レンダラ側で制御する。
+ *
+ * 往復の冪等性: 書き出した `- [x] done\n- plain\n` を再パースしても、
+ * `taskListRule` は全アイテム一致でないため `bulletList` のままになり、
+ * 同じ doc → 同じ出力になる。
+ */
+let unescapeLeadingTaskMarker = false;
+
+/** `listItem` の先頭が段落で、その先頭テキストがタスクマーカーで始まるか。 */
+function hasLeadingTaskMarker(node: PMNode): boolean {
+  const firstBlock = node.firstChild;
+  if (!firstBlock || firstBlock.type.name !== 'paragraph') return false;
+  const firstInline = firstBlock.firstChild;
+  if (!firstInline?.isText || !firstInline.text) return false;
+  return LIST_ITEM_TASK_MARKER_RE.test(firstInline.text);
+}
+
 function isInsideRange(
   ranges: Array<[number, number]>,
   index: number,
@@ -50,7 +83,21 @@ function safeEsc(
   startOfLine = false,
 ): string {
   const mathRanges = findMathSpans(str);
+  // `- [x] done` の先頭 `[` / `]`(offset 0 / 2)だけエスケープを免除する。
+  // `startOfLine`(= `MarkdownSerializerState.atBlockStart`)はブロック先頭の
+  // 最初のテキストでのみ true になるため、当該アイテムの先頭テキストだけに
+  // 確実に一致する。一度使ったらフラグは消費する。
+  let taskMarkerSkipLen = 0;
+  if (
+    unescapeLeadingTaskMarker &&
+    startOfLine &&
+    LIST_ITEM_TASK_MARKER_RE.test(str)
+  ) {
+    unescapeLeadingTaskMarker = false;
+    taskMarkerSkipLen = 3;
+  }
   let result = str.replace(/[`*\\~[\]_]/g, (m: string, offset: number) => {
+    if (offset < taskMarkerSkipLen) return m;
     if (isInsideRange(mathRanges, offset)) return m;
     if (
       m === '_' &&
@@ -106,7 +153,18 @@ const serializer = new MarkdownSerializer(
         return state.repeat(' ', maxW - nStr.length) + nStr + '. ';
       });
     },
-    listItem: d.nodes.list_item!,
+    // 既定の list_item は `state.renderContent(node)` するだけ。ここでは
+    // 先頭のタスクマーカーをエスケープさせないフラグ制御だけを足している
+    // (`unescapeLeadingTaskMarker` の説明を参照)。
+    listItem: (state, node) => {
+      const previous = unescapeLeadingTaskMarker;
+      unescapeLeadingTaskMarker = hasLeadingTaskMarker(node);
+      try {
+        state.renderContent(node);
+      } finally {
+        unescapeLeadingTaskMarker = previous;
+      }
+    },
     taskList: (state, node) => state.renderList(node, '  ', () => '- '),
     taskItem: (state, node) => {
       state.write(node.attrs.checked ? '[x] ' : '[ ] ');
@@ -166,6 +224,9 @@ export function serializeMarkdown(docJson: JSONContent): string {
       body = serializer.serialize(bodyDoc, { tightLists: true });
     } finally {
       MarkdownSerializerState.prototype.esc = originalEsc;
+      // 例外で listItem レンダラの finally を抜けられなかった場合に備え、
+      // モジュールスコープのフラグが次回の呼び出しへ漏れないようにする。
+      unescapeLeadingTaskMarker = false;
     }
   }
 

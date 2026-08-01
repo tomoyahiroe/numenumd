@@ -114,6 +114,81 @@ describe('unpaired prose $ does not swallow other inline markup (review round 2)
   });
 });
 
+// 最終レビュー Important: リンクの title(`[t](href "Title")` の第2引数)が
+// スキーマに属性を持たず、保存で無音消失していた問題の回帰テスト。
+// extensions.ts の LinkWithTitle(`title` 属性)+ parse.ts の
+// link getAttrs + prosemirror-markdown 既定の link マークが揃って初めて通る。
+describe('link title survives the round trip (final review)', () => {
+  it('keeps the title in the parsed mark attrs', () => {
+    const doc = parseMarkdown('[t](https://x.jp "Title")\n');
+    const marks = doc.content?.[0]?.content?.[0]?.marks ?? [];
+    expect(marks[0]).toMatchObject({
+      type: 'link',
+      attrs: { href: 'https://x.jp', title: 'Title' },
+    });
+  });
+
+  it('serializes the title back byte-for-byte', () => {
+    const md = '[t](https://x.jp "Title")\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  it('keeps a titled link idempotent through mdToMd', async () => {
+    const md = '[t](https://x.jp "Title")\n';
+    const once = await mdToMd(md);
+    const twice = await mdToMd(once);
+    expect(once).toContain('Title');
+    expect(twice).toBe(once);
+  });
+
+  it('still serializes a link without a title as before', () => {
+    const md = '[t](https://x.jp)\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+});
+
+// 最終レビュー Important: タスク項目と通常項目が混在したリストは
+// (taskListRule が「全項目タスク」のときだけ taskList 化する設計のため)
+// bulletList のまま保持されるが、safeEsc が `[` / `]` を常時エスケープして
+// `- \[x\] done` に化け、GitHub 上でチェックボックスとして描画されなくなる
+// 問題の回帰テスト。serialize.ts の listItem レンダラ側で先頭マーカーだけ
+// エスケープを免除する方式を採った。
+describe('mixed task/plain list keeps its checkbox syntax (final review)', () => {
+  const mixed = '- [x] done\n- plain\n';
+
+  it('round-trips a mixed list byte-for-byte', () => {
+    expect(serializeMarkdown(parseMarkdown(mixed))).toBe(mixed);
+  });
+
+  it('round-trips a mixed list that starts with a plain item', () => {
+    const md = '- plain\n- [ ] todo\n- [X] done\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  it('is idempotent through mdToMd', async () => {
+    const once = await mdToMd(mixed);
+    const twice = await mdToMd(once);
+    expect(once).toBe(mixed);
+    expect(twice).toBe(once);
+  });
+
+  it('stays a bulletList (not a taskList) on re-parse, so the output is stable', () => {
+    const doc = parseMarkdown(serializeMarkdown(parseMarkdown(mixed)));
+    expect(doc.content?.[0]?.type).toBe('bulletList');
+  });
+
+  it('still escapes brackets that are not a leading task marker', () => {
+    const md = '- a \\[x\\] b\n- plain\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  it('leaves an all-task list on the taskList path unchanged', () => {
+    const md = '- [x] done\n- [ ] todo\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+    expect(parseMarkdown(md).content?.[0]?.type).toBe('taskList');
+  });
+});
+
 // レビュー Finding 2: mdToMd が frontmatter ごと Prettier に通してしまい、
 // verbatim 書き戻しの原則(numenumd プロジェクトルール)に違反する問題の回帰テスト。
 describe('frontmatter stays verbatim through mdToMd (review finding 2)', () => {

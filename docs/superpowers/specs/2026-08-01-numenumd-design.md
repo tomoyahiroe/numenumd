@@ -145,6 +145,41 @@ numenumd/
     └── fixtures/          # ゴールデンテスト用 .md
 ```
 
+## 開発ハーネス
+
+### pre-commit(husky + lint-staged)
+
+- ステージされたファイルに ESLint(--fix)+ Prettier を適用。
+- `tsc --noEmit`(型チェック)+ `vitest run`(全テスト)をパスしないとコミット不可。
+
+### PR 自動 CI(GitHub Actions)
+
+- `pull_request` トリガーで lint / typecheck / test / build(拡張の zip を
+  アーティファクト化)の 4 ジョブ。
+- main ブランチは保護設定: 直接 push 禁止・CI グリーン必須・PR 経由のみ。
+
+### Chrome Web Store 自動デプロイ(CD)
+
+- リリースタグ(`v*`)の push をトリガーに build → zip → Chrome Web Store API で
+  アップロード&公開。
+- マージ毎ではなくタグ毎にする理由: ストア公開は取り消しが効きにくく審査も挟まるため、
+  「マージ = 開発の前進」「タグ = 意図したリリース」を分離する。
+- デプロイ前にタグと `manifest.json` のバージョン一致をチェック。
+- **Secrets 未設定時はデプロイジョブを自動スキップ**する(ワークフロー自体は先に整備)。
+  CWS デベロッパーアカウント取得後に以下を行えば有効化される:
+  1. Chrome Web Store デベロッパー登録(登録料 $5)
+  2. 初回のみ手動アップロードで拡張 ID を取得
+  3. GitHub Secrets に `CLIENT_ID` / `CLIENT_SECRET` / `REFRESH_TOKEN` / `EXTENSION_ID` を登録
+
+### マージゲート(独立 subagent レビュー)
+
+- PR をマージする前に、実装セッションの文脈を共有しない新規 subagent にレビューを依頼する
+  ルールを `CLAUDE.md` に明文化する。subagent は PR ブランチをチェックアウトし、
+  スペック・実装計画との整合、テストの実在性(テストが本当に検証しているか)、
+  diff の品質を独立に確認する。
+- マージ条件: **CI グリーン + 独立レビュー承認**の両方。承認後に `gh pr merge`。
+- 狙いは、実装セッション自身が「自分の作ったものを自分で承認」するのを防ぐこと。
+
 ## フェーズ計画
 
 - **MVP:** 本ドキュメントの全機能(基本ブロック + スラッシュコマンド + 数式 + 保存整形)

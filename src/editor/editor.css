@@ -1,0 +1,95 @@
+@import 'katex/dist/katex.min.css';
+
+.numenumd-editor {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 96px 24px 30vh;
+}
+.numenumd-editor .ProseMirror {
+  outline: none;
+  font:
+    16px/1.7 -apple-system,
+    'Hiragino Sans',
+    sans-serif;
+  color: #37352f;
+}
+.numenumd-editor h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 1em 0 0.3em;
+}
+.numenumd-editor h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin: 1em 0 0.3em;
+}
+.numenumd-editor h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+}
+.numenumd-editor code {
+  background: rgba(135, 131, 120, 0.15);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-size: 0.85em;
+  color: #eb5757;
+}
+.numenumd-editor pre {
+  background: #f7f6f3;
+  border-radius: 4px;
+  padding: 16px;
+  overflow-x: auto;
+}
+.numenumd-editor pre code {
+  background: none;
+  color: inherit;
+}
+.numenumd-editor blockquote {
+  border-left: 3px solid #37352f;
+  margin: 0;
+  padding-left: 14px;
+}
+.numenumd-editor ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0;
+}
+
+/* カスタムノード NodeView */
+.numenumd-math-block,
+.numenumd-raw,
+[data-raw-block],
+.numenumd-frontmatter {
+  cursor: text;
+}
+.numenumd-math-block {
+  padding: 8px 4px;
+  text-align: center;
+}
+.numenumd-math-block-edit,
+.numenumd-raw-edit,
+.numenumd-frontmatter-edit {
+  width: 100%;
+  box-sizing: border-box;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.9em;
+  border: 1px solid #d9d9d6;
+  border-radius: 4px;
+  padding: 8px;
+  resize: vertical;
+}
+.numenumd-raw {
+  background: #fffbe6;
+  border: 1px dashed #d9c58a;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.numenumd-frontmatter {
+  color: #787774;
+  font-size: 0.85em;
+}
+.numenumd-frontmatter pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

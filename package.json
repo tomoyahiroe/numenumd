@@ -52,6 +52,7 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",
     "@eslint/js": "^10.0.1",
+    "@testing-library/react": "^16.3.2",
     "@types/katex": "^0.16.8",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^26.1.2",

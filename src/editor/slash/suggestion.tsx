@@ -10,7 +10,7 @@ import { filterSlashItems, type SlashItem } from './items';
  * `ArrowUp`/`ArrowDown`/`Enter` は suggestion の `onKeyDown` から
  * `useImperativeHandle` 経由で呼び出す(Tiptap 公式 suggestion リファレンス実装と同じ構造)。
  */
-type SlashMenuProps = {
+export type SlashMenuProps = {
   items: SlashItem[];
   command: (item: SlashItem) => void;
 };
@@ -19,7 +19,7 @@ export type SlashMenuHandle = {
   onKeyDown: (props: { event: KeyboardEvent }) => boolean;
 };
 
-const SlashMenu = forwardRef<SlashMenuHandle, SlashMenuProps>(
+export const SlashMenu = forwardRef<SlashMenuHandle, SlashMenuProps>(
   ({ items, command }, ref) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -34,7 +34,12 @@ const SlashMenu = forwardRef<SlashMenuHandle, SlashMenuProps>(
 
     useImperativeHandle(ref, () => ({
       onKeyDown: ({ event }) => {
-        if (items.length === 0) return false;
+        if (items.length === 0) {
+          // 0件マッチ時は Enter だけ消費してメニューを閉じる。消費しないと
+          // エディタ本体の Enter(改行/splitBlock)が発火してしまい、
+          // `/zzz` のようなテキストが残ったまま意図しない改行が入る。
+          return event.key === 'Enter';
+        }
 
         if (event.key === 'ArrowUp') {
           setSelectedIndex((prev) => (prev + items.length - 1) % items.length);
@@ -82,7 +87,7 @@ const SlashMenu = forwardRef<SlashMenuHandle, SlashMenuProps>(
 );
 SlashMenu.displayName = 'SlashMenu';
 
-const renderSlashMenu: SuggestionOptions<
+export const renderSlashMenu: SuggestionOptions<
   SlashItem,
   SlashItem
 >['render'] = () => {
@@ -107,8 +112,21 @@ const renderSlashMenu: SuggestionOptions<
     });
   };
 
+  const destroyAll = () => {
+    popup?.[0]?.destroy();
+    popup = undefined;
+    component?.destroy();
+    component = undefined;
+  };
+
   return {
     onStart: (props) => {
+      // `renderSlashMenu()` はエディタごとに一度しか呼ばれず、この
+      // クロージャは開く/閉じるを繰り返すあいだ使い回される。前回セッションの
+      // 後始末が(何らかの理由で)漏れていた場合に備え、開始時にも念のため
+      // 古い参照を破棄しておく。
+      destroyAll();
+
       component = new ReactRenderer(SlashMenu, {
         props: { items: props.items, command: props.command },
         editor: props.editor,
@@ -145,8 +163,7 @@ const renderSlashMenu: SuggestionOptions<
     },
 
     onExit() {
-      popup?.[0]?.destroy();
-      component?.destroy();
+      destroyAll();
     },
   };
 };

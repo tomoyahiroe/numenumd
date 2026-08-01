@@ -49,4 +49,33 @@ describe('buildExtensions', () => {
       '| a | b |\n|---|---|',
     );
   });
+
+  it('mathBlock restores latex when parsed back from its rendered HTML', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<div data-math-block>E = mc^2</div>');
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'mathBlock',
+      attrs: { latex: 'E = mc^2' },
+    });
+  });
+
+  it('rawBlock restores content when parsed back from its rendered HTML', () => {
+    const editor = makeEditor();
+    editor.commands.setContent(
+      '<div data-raw-block>| a | b |\n|---|---|</div>',
+    );
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'rawBlock',
+      attrs: { content: '| a | b |\n|---|---|' },
+    });
+  });
+
+  it('frontmatter restores content when parsed back from its rendered HTML', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<div data-frontmatter>title: Hello</div>');
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'frontmatter',
+      attrs: { content: 'title: Hello' },
+    });
+  });
 });

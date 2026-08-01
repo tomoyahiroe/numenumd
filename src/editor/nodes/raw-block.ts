@@ -8,7 +8,14 @@ export const RawBlock = Node.create({
     return { content: { default: '' } };
   },
   parseHTML() {
-    return [{ tag: 'div[data-raw-block]' }];
+    return [
+      {
+        tag: 'div[data-raw-block]',
+        getAttrs: (el) => ({
+          content: (el as HTMLElement).textContent ?? '',
+        }),
+      },
+    ];
   },
   renderHTML({ node, HTMLAttributes }) {
     return [

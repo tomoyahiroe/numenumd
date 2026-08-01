@@ -8,7 +8,14 @@ export const MathBlock = Node.create({
     return { latex: { default: '' } };
   },
   parseHTML() {
-    return [{ tag: 'div[data-math-block]' }];
+    return [
+      {
+        tag: 'div[data-math-block]',
+        getAttrs: (el) => ({
+          latex: (el as HTMLElement).textContent ?? '',
+        }),
+      },
+    ];
   },
   renderHTML({ node, HTMLAttributes }) {
     return [

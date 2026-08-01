@@ -8,7 +8,14 @@ export const Frontmatter = Node.create({
     return { content: { default: '' } };
   },
   parseHTML() {
-    return [{ tag: 'div[data-frontmatter]' }];
+    return [
+      {
+        tag: 'div[data-frontmatter]',
+        getAttrs: (el) => ({
+          content: (el as HTMLElement).textContent ?? '',
+        }),
+      },
+    ];
   },
   renderHTML({ node, HTMLAttributes }) {
     return [

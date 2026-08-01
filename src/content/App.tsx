@@ -28,12 +28,23 @@ export function App({ rawMarkdown, filename }: Props) {
   const save = useCallback(async () => {
     if (!dirty) return;
 
+    // 保存対象のスナップショットを固定する。この後 docToMd / fc.save の
+    // 複数の await を挟む間にユーザーがさらに編集すると docRef.current は
+    // 新しいオブジェクトに差し替わる(onDocChange は常に新規オブジェクトを
+    // 渡す)ので、保存完了時に docRef.current がこのスナップショットのまま
+    // かどうかを参照同一性だけで判定できる。異なっていれば「保存後に
+    // 反映されていない編集がある」ということなので dirty を落としてはいけない
+    // (落とすと、その編集は画面上は非 dirty に見えたままメモリにしか残らず、
+    // beforeunload の警告も出ず、次の Cmd+S も !dirty で何もしないため、
+    // タブを閉じると無警告でデータが消える)。
+    const snapshot = docRef.current;
+
     // ユーザーの Markdown を絶対に失わないため、シリアライズ/整形に失敗した
     // 場合は空文字列や部分文字列を絶対に fc.save() へ渡さず、ここで打ち切る。
     // dirty はそのまま維持し、ユーザーに再試行の機会を残す。
     let md: string;
     try {
-      md = await docToMd(docRef.current);
+      md = await docToMd(snapshot);
     } catch (e) {
       flashToast(`変換に失敗しました: ${messageFor(e)}`);
       return;
@@ -52,7 +63,9 @@ export function App({ rawMarkdown, filename }: Props) {
         }
       }
       if (result === 'saved') {
-        setDirty(false);
+        if (docRef.current === snapshot) {
+          setDirty(false);
+        }
         flashToast('保存しました');
       }
       if (result === 'cancelled') {
@@ -78,6 +91,28 @@ export function App({ rawMarkdown, filename }: Props) {
       }),
     [router, save],
   );
+
+  // KeyRouter は ProseMirror の handleKeyDown 経由でしか届かないため、
+  // エディタにフォーカスが無い状態(ヘッダやガター等、720px のエディタ幅の
+  // 外側をクリックした後)の Cmd+S は素通ししてしまい、Chrome 既定の
+  // 「ページを保存」ダイアログが開いてしまう。document レベルにも同じ
+  // router へ委譲するフォールバックの keydown リスナを張ることで、
+  // フォーカス位置によらず Cmd+S を確実に横取りする。
+  //
+  // エディタにフォーカスがある場合は ProseMirror の handleKeyDown が先に
+  // イベントを処理して ev.preventDefault() を呼ぶ(イベントターゲットである
+  // `.ProseMirror` 自身に張られたリスナのため、bubble フェーズで document に
+  // 届くより前に発火する)。そのイベントは preventDefault 済みのまま
+  // document まで bubble してくるので、ここで `ev.defaultPrevented` を見て
+  // 二重に route してしまう(= 保存が2回走る)のを防ぐ。
+  useEffect(() => {
+    const onDocumentKeyDown = (ev: KeyboardEvent) => {
+      if (ev.defaultPrevented) return;
+      router.route(ev);
+    };
+    document.addEventListener('keydown', onDocumentKeyDown);
+    return () => document.removeEventListener('keydown', onDocumentKeyDown);
+  }, [router]);
 
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {

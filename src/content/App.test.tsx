@@ -68,7 +68,7 @@ describe('App', () => {
     expect(await screen.findByTestId('dirty-dot')).toBeTruthy();
   });
 
-  it('saves via Cmd+S and clears dirty on success', async () => {
+  it('saves via Cmd+S and clears dirty on success (also covers: the ProseMirror-level handleKeyDown handling does not double-route to the document-level Cmd+S listener when the event bubbles, since save is asserted to have been called exactly once — Finding 2 guard)', async () => {
     const save = vi.fn(async () => 'saved' as const);
     mockFileController({ save });
     render(<App rawMarkdown={'x'} filename="note.md" />);
@@ -79,6 +79,77 @@ describe('App', () => {
     expect(await screen.findByTestId('dirty-dot')).toBeTruthy();
 
     act(() => pressCmdS());
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByTestId('dirty-dot')).toBeNull());
+  });
+
+  it('keeps dirty if the user edits again while save() is still in flight, and the next Cmd+S saves the new edit (Finding 1)', async () => {
+    let resolveSave: (v: 'saved') => void = () => {};
+    const savePromise = new Promise<'saved'>((resolve) => {
+      resolveSave = resolve;
+    });
+    const save = vi.fn(() => savePromise);
+    mockFileController({ save });
+    render(<App rawMarkdown={'x'} filename="note.md" />);
+    await waitFor(() => expect(window.__numenumdEditor__).toBeTruthy());
+    act(() => {
+      window.__numenumdEditor__!.commands.insertContent('y');
+    });
+    expect(await screen.findByTestId('dirty-dot')).toBeTruthy();
+
+    act(() => pressCmdS());
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+
+    // 保存の await 中(まだ fc.save が resolve していない)にさらに編集する。
+    act(() => {
+      window.__numenumdEditor__!.commands.insertContent('z');
+    });
+
+    // ここで保存が完了する。
+    await act(async () => {
+      resolveSave('saved');
+      await savePromise;
+    });
+
+    // 保存が完了した内容には、直後の編集が反映されていない。
+    // dirty を落としてしまうと、その編集はメモリにしか残らず
+    // タブを閉じれば警告なく消えてしまう(無警告データロス)ので、
+    // dirty は維持されなければならない。
+    expect(screen.getByTestId('dirty-dot')).toBeTruthy();
+
+    // 次の Cmd+S で、取りこぼされていた編集が改めて保存される。
+    act(() => pressCmdS());
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId('dirty-dot')).toBeNull());
+  });
+
+  it('routes Cmd+S even when focus is outside the editor, e.g. after clicking the header (Finding 2)', async () => {
+    const save = vi.fn(async () => 'saved' as const);
+    mockFileController({ save });
+    render(<App rawMarkdown={'x'} filename="note.md" />);
+    await waitFor(() => expect(window.__numenumdEditor__).toBeTruthy());
+    act(() => {
+      window.__numenumdEditor__!.commands.insertContent('y');
+    });
+    expect(await screen.findByTestId('dirty-dot')).toBeTruthy();
+
+    // フォーカスをエディタの外(ヘッダ・ガター等)へ移す。KeyRouter は
+    // ProseMirror の handleKeyDown 経由でしか届かないため、フォーカスが
+    // エディタに無い状態の Cmd+S はこの document レベルのフォールバックが
+    // 無いと素通しし、Chrome の「ページを保存」ダイアログが開いてしまう。
+    document.body.focus();
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 's',
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByTestId('dirty-dot')).toBeNull());

@@ -5,7 +5,6 @@ import type {
   MarkdownIt as MarkdownItInstance,
   StateBlock,
   StateCore,
-  Token,
 } from 'markdown-it';
 import { MarkdownParser, type ParseSpec } from 'prosemirror-markdown';
 import { buildExtensions } from '../editor/extensions';
@@ -58,44 +57,51 @@ function mathBlockRule(
   return true;
 }
 
-/** table / html_block のトークン列を、元テキストを verbatim に保持した単一の raw_block トークンへ潰す。 */
-function rawBlockRule(state: StateCore): void {
-  const { tokens } = state;
-  const lines = state.src.split('\n');
-  const out: Token[] = [];
+/**
+ * 指定した名前のブロックルール(`table` / `html_block` / `reference`)を
+ * verbatim 保全な単一の `raw_block` トークンへ差し替えるラッパーを作る。
+ *
+ * これらのブロックが blockquote やリストの中に出現すると、行頭の `> ` や
+ * インデントは `state.src` の行そのものには残ったままになる(ブロック解析中に
+ * `state.bMarks`/`blkIndent` 側で「読み飛ばす」だけで元の文字列を書き換えないため)。
+ * そのため、単純に `state.src.split('\n')` で行範囲をスライスすると
+ * コンテナのマーカー文字が verbatim テキストに混入してしまう。
+ *
+ * これを避けるため、当該ブロックの実際の判定・トークン化は元のルール関数を
+ * そのまま呼び出して行い(`state.env.references` の更新など副作用も保持される)、
+ * 生成されたトークン列だけを破棄して、`fence`/`math_block` と同じ
+ * `state.getLines(start, end, state.blkIndent, true)` によるコンテナ考慮済みの
+ * verbatim テキストで単一の `raw_block` トークンに置き換える。
+ */
+function wrapAsRawBlock(
+  originalName: 'table' | 'html_block' | 'reference',
+): (
+  state: StateBlock,
+  startLine: number,
+  endLine: number,
+  silent: boolean,
+) => boolean {
+  return (state, startLine, endLine, silent) => {
+    const rule = state.md.block.ruler.__rules__.find(
+      (r) => r.name === originalName && r.enabled,
+    );
+    if (!rule) return false;
 
-  const sliceByMap = (
-    map: [number, number] | null,
-    fallback: string,
-  ): string => {
-    if (!map) return fallback.replace(/\n+$/, '');
-    const [start, end] = map;
-    return lines.slice(start, end).join('\n');
+    const tokenCountBefore = state.tokens.length;
+    const matched = rule.fn(state, startLine, endLine, silent);
+    if (!matched || silent) return matched;
+
+    const endLine2 = state.line;
+    // 元のルールが積んだトークン(table_open...table_close、html_block、
+    // reference_definition 等)は使わず、raw_block 1個に差し替える。
+    state.tokens.length = tokenCountBefore;
+    const raw = state.push('raw_block', '', 0);
+    raw.content = state
+      .getLines(startLine, endLine2, state.blkIndent, true)
+      .replace(/\n$/, '');
+    raw.map = [startLine, endLine2];
+    return true;
   };
-
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i]!;
-    if (t.type === 'table_open') {
-      let j = i;
-      while (j < tokens.length && tokens[j]!.type !== 'table_close') j++;
-      const raw = new state.Token('raw_block', '', 0);
-      raw.content = sliceByMap(t.map, t.content);
-      raw.map = t.map;
-      out.push(raw);
-      i = j;
-      continue;
-    }
-    if (t.type === 'html_block') {
-      const raw = new state.Token('raw_block', '', 0);
-      raw.content = sliceByMap(t.map, t.content);
-      raw.map = t.map;
-      out.push(raw);
-      continue;
-    }
-    out.push(t);
-  }
-
-  state.tokens = out;
 }
 
 /**
@@ -186,13 +192,66 @@ function taskListRule(state: StateCore): void {
   }
 }
 
+/**
+ * スキーマに `image` ノードが存在しないため、インライン画像は完全に消えてしまう
+ * (`image` トークンにハンドラが無いと MarkdownParser が例外を投げ、`parseBody` の
+ * フォールバックで文書全体が単一 rawBlock に潰れてしまう)。
+ * 同様に `html_inline`(`<br>` 等、`html: true` のとき生成される)にもハンドラが無い。
+ *
+ * ここでは、画像は `![alt](src)`(title があれば `![alt](src "title")`)という
+ * Markdown 表記そのものをプレーンテキストとして保持し、インライン HTML は元の
+ * 生テキスト(`token.content` は元の該当タグの verbatim 文字列)をそのまま
+ * テキストとして保持する。ノード種別が無い以上「見た目」は失われるが、
+ * 文字情報(alt/src/title、生 HTML 片)は失われず、かつ段落単位の構造も保たれる。
+ * `inline` core ルールの後(children が生成された後)に実行する必要がある。
+ */
+function inlineFallbackToTextRule(state: StateCore): void {
+  for (const tok of state.tokens) {
+    if (tok.type !== 'inline' || !tok.children) continue;
+    for (const child of tok.children) {
+      if (child.type === 'image') {
+        const src = child.attrGet('src') ?? '';
+        const title = child.attrGet('title');
+        const alt = child.content;
+        child.type = 'text';
+        child.content = title
+          ? `![${alt}](${src} "${title}")`
+          : `![${alt}](${src})`;
+        child.children = null;
+      } else if (child.type === 'html_inline') {
+        // token.content は元のタグの verbatim テキストなのでそのまま text 化する。
+        child.type = 'text';
+      }
+    }
+  }
+}
+
 function buildMarkdownIt(): MarkdownItInstance {
   const md = new MarkdownIt({ html: true });
   md.block.ruler.before('fence', 'math_block', mathBlockRule, {
     alt: ['paragraph', 'reference', 'blockquote', 'list'],
   });
-  md.core.ruler.before('inline', 'raw_block', rawBlockRule);
+  // table / html_block / reference(参照リンク定義)は、コンテナ(blockquote・list)の
+  // マーカーを混入させずに verbatim 保全するため、post-hoc なトークン置換ではなく
+  // ブロックルールそのものをラップする(wrapAsRawBlock 参照)。
+  md.block.ruler.before('table', 'raw_table', wrapAsRawBlock('table'), {
+    alt: ['paragraph', 'reference'],
+  });
+  md.block.ruler.before(
+    'reference',
+    'raw_reference',
+    wrapAsRawBlock('reference'),
+  );
+  md.block.ruler.before(
+    'html_block',
+    'raw_html_block',
+    wrapAsRawBlock('html_block'),
+    {
+      alt: ['paragraph', 'reference', 'blockquote'],
+    },
+  );
   md.core.ruler.before('inline', 'task_list', taskListRule);
+  md.core.ruler.push('inline_fallback_to_text', inlineFallbackToTextRule);
   return md;
 }
 

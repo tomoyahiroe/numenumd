@@ -71,6 +71,55 @@ describe('parseMarkdown', () => {
   });
 });
 
+describe('parseMarkdown (review fixes: images/html_inline, container-nested raw blocks, reference definitions)', () => {
+  it('keeps a document with an inline image intact instead of collapsing to one rawBlock', () => {
+    const doc = parseMarkdown('# Title\n\n![alt](a.png)\n\nbody');
+    expect(doc.content?.map((n) => n.type)).toEqual([
+      'heading',
+      'paragraph',
+      'paragraph',
+    ]);
+    const imagePara = doc.content?.[1];
+    expect(imagePara?.content?.map((t) => t.text).join('')).toBe(
+      '![alt](a.png)',
+    );
+  });
+
+  it('keeps inline html as plain text instead of collapsing the paragraph', () => {
+    const doc = parseMarkdown('text with <br> more');
+    expect(doc.content?.[0]?.type).toBe('paragraph');
+    expect(doc.content?.[0]?.content?.map((t) => t.text).join('')).toBe(
+      'text with <br> more',
+    );
+  });
+
+  it('does not leak the blockquote marker into a nested table rawBlock', () => {
+    const doc = parseMarkdown('> | a | b |\n> | --- | --- |\n> | 1 | 2 |');
+    const quote = doc.content?.[0];
+    expect(quote?.type).toBe('blockquote');
+    const raw = quote?.content?.[0];
+    expect(raw?.type).toBe('rawBlock');
+    expect(raw?.attrs?.content).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |');
+  });
+
+  it('preserves a used link reference definition verbatim instead of dropping it', () => {
+    const src = '[foo]: https://example.com "bar"\n\nsee [foo][foo]';
+    const doc = parseMarkdown(src);
+    expect(doc.content?.[0]).toMatchObject({
+      type: 'rawBlock',
+      attrs: { content: '[foo]: https://example.com "bar"' },
+    });
+  });
+
+  it('preserves an unused link reference definition verbatim', () => {
+    const doc = parseMarkdown('[foo]: https://example.com');
+    expect(doc.content?.[0]).toMatchObject({
+      type: 'rawBlock',
+      attrs: { content: '[foo]: https://example.com' },
+    });
+  });
+});
+
 describe('splitFrontmatter', () => {
   it('splits only a leading --- block', () => {
     expect(splitFrontmatter('---\na: 1\n---\nbody')).toEqual({

@@ -23,13 +23,20 @@ export class FileController {
   private handle: FileSystemFileHandle | null = null;
   private lastSavedMtime: number | null = null;
 
-  constructor(private readonly suggestedName: string) {}
+  constructor(
+    private readonly suggestedName: string,
+    // showSaveFilePicker の id。Chrome は (origin, id) ごとに最後に使った
+    // ディレクトリを記憶するため、フォルダ由来の id を渡すと2回目以降の
+    // ピッカーが Download ではなく前回のフォルダで開く。
+    private readonly pickerId?: string,
+  ) {}
 
   async save(markdown: string): Promise<SaveResult> {
     if (!this.handle) {
       try {
         this.handle = await window.showSaveFilePicker({
           suggestedName: this.suggestedName,
+          ...(this.pickerId !== undefined && { id: this.pickerId }),
           types: [
             { description: 'Markdown', accept: { 'text/markdown': ['.md'] } },
           ],

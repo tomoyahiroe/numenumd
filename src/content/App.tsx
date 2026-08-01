@@ -5,6 +5,7 @@ import { docToMd } from '../markdown/format';
 import { MarkdownEditor } from '../editor/Editor';
 import { KeyRouter } from '../keymap/router';
 import { FileController } from '../file/controller';
+import { pickerIdForPath } from '../file/picker-id';
 
 type Props = { rawMarkdown: string; filename: string };
 
@@ -15,7 +16,10 @@ function messageFor(e: unknown): string {
 export function App({ rawMarkdown, filename }: Props) {
   const initialDoc = useMemo(() => parseMarkdown(rawMarkdown), [rawMarkdown]);
   const router = useMemo(() => new KeyRouter(), []);
-  const fc = useMemo(() => new FileController(filename), [filename]);
+  const fc = useMemo(
+    () => new FileController(filename, pickerIdForPath(location.pathname)),
+    [filename],
+  );
   const docRef = useRef<JSONContent>(initialDoc);
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState<string | null>(null);

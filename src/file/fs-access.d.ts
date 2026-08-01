@@ -15,6 +15,8 @@ interface FileSystemFileHandle {
 
 interface SaveFilePickerOptions {
   suggestedName?: string;
+  /** Chrome remembers the last-used directory per (origin, id). */
+  id?: string;
   types?: Array<{
     description?: string;
     accept: Record<string, string[]>;

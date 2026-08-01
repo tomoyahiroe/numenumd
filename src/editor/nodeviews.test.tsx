@@ -119,3 +119,36 @@ describe('frontmatter NodeView', () => {
     ).toBe('title: World');
   });
 });
+
+describe('mathBlock creation focus (UX feedback)', () => {
+  it('opens a newly created math block in edit mode with the textarea focused', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '$$' }] }],
+    });
+    const editor = window.__numenumdEditor__!;
+
+    act(() => {
+      editor.commands.setTextSelection(3); // after "$$"
+      editor.commands.keyboardShortcut('Enter');
+    });
+
+    const mathDom = container.querySelector('[data-math-block]');
+    expect(mathDom).toBeTruthy();
+    const textarea = mathDom!.querySelector('textarea');
+    expect(textarea).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(textarea);
+    });
+  });
+
+  it('does not steal focus for an empty math block that exists at load time', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [{ type: 'mathBlock', attrs: { latex: '' } }],
+    });
+    const mathDom = container.querySelector('[data-math-block]');
+    expect(mathDom).toBeTruthy();
+    expect(mathDom!.querySelector('textarea')).toBeNull();
+  });
+});

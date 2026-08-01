@@ -88,3 +88,29 @@ describe('FileController', () => {
     expect(fresh.written).toEqual(['v1']);
   });
 });
+
+describe('FileController picker directory memory (UX feedback)', () => {
+  it('passes a stable picker id so Chrome reopens the last-used directory', async () => {
+    const { handle } = mockHandle(1000);
+    const picker = vi.fn(async () => handle);
+    vi.stubGlobal('showSaveFilePicker', picker);
+    const fc = new FileController('note.md', 'd_notesdir');
+    await fc.save('# a\n');
+    expect(picker).toHaveBeenCalledWith(
+      expect.objectContaining({ suggestedName: 'note.md', id: 'd_notesdir' }),
+    );
+  });
+
+  it('omits id when none is provided (backwards compatible)', async () => {
+    const { handle } = mockHandle(1000);
+    const picker = vi.fn(async () => handle);
+    vi.stubGlobal('showSaveFilePicker', picker);
+    const fc = new FileController('note.md');
+    await fc.save('x');
+    const call = (picker.mock.calls[0] as unknown[])[0] as Record<
+      string,
+      unknown
+    >;
+    expect('id' in call).toBe(false);
+  });
+});

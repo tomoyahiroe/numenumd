@@ -19,7 +19,7 @@ const BAD_PATTERNS = [
   ['UTF-16 surrogate (WTF-8)', /\xed[\xa0-\xbf][\x80-\xbf]/],
   ['noncharacter U+FDD0-U+FDEF', /\xef\xb7[\x90-\xaf]/],
   ['noncharacter U+FFFE/U+FFFF', /\xef\xbf[\xbe\xbf]/],
-  ['plane-end noncharacter U+nFFFE/U+nFFFF', /[\xf0-\xf4][\x80-\xbf]\xbf[\xbe\xbf]/],
+  ['plane-end noncharacter U+nFFFE/U+nFFFF', /[\xf0-\xf4][\x8f\x9f\xaf\xbf]\xbf[\xbe\xbf]/],
 ];
 
 let failures = 0;

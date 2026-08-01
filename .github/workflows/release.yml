@@ -1,0 +1,42 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Verify tag matches manifest version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(node -p "require('./package.json').version")
+          test "$TAG" = "$VER" || { echo "tag $TAG != package version $VER"; exit 1; }
+      - run: npm test
+      - run: npm run build
+      - run: cd dist && zip -r ../extension.zip .
+      - uses: actions/upload-artifact@v4
+        with: { name: extension-zip, path: extension.zip }
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+    steps:
+      - name: Skip if secrets not configured
+        if: env.CWS_CLIENT_ID == ''
+        run: echo "CWS secrets not set — skipping publish" && exit 0
+      - uses: actions/download-artifact@v4
+        if: env.CWS_CLIENT_ID != ''
+        with: { name: extension-zip }
+      - name: Upload & publish to Chrome Web Store
+        if: env.CWS_CLIENT_ID != ''
+        run: |
+          npx chrome-webstore-upload-cli@3 upload --source extension.zip --auto-publish \
+            --extension-id "${{ secrets.CWS_EXTENSION_ID }}" \
+            --client-id "${{ secrets.CWS_CLIENT_ID }}" \
+            --client-secret "${{ secrets.CWS_CLIENT_SECRET }}" \
+            --refresh-token "${{ secrets.CWS_REFRESH_TOKEN }}"

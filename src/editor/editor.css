@@ -1,0 +1,196 @@
+@import 'katex/dist/katex.min.css';
+
+.numenumd-app {
+  min-height: 100vh;
+}
+
+.numenumd-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: #fff;
+  border-bottom: 1px solid #edece9;
+  font:
+    13px/1.4 -apple-system,
+    'Hiragino Sans',
+    sans-serif;
+  color: #9b9a97;
+}
+
+.numenumd-dirty {
+  color: #eb5757;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.numenumd-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 20;
+  padding: 8px 14px;
+  background: #37352f;
+  color: #fff;
+  border-radius: 6px;
+  font:
+    13px/1.4 -apple-system,
+    'Hiragino Sans',
+    sans-serif;
+  box-shadow: 0 4px 12px rgba(15, 15, 15, 0.2);
+  animation: numenumd-toast-fade 2s ease forwards;
+}
+
+@keyframes numenumd-toast-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.numenumd-editor {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 96px 24px 30vh;
+}
+.numenumd-editor .ProseMirror {
+  outline: none;
+  font:
+    16px/1.7 -apple-system,
+    'Hiragino Sans',
+    sans-serif;
+  color: #37352f;
+}
+.numenumd-editor h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 1em 0 0.3em;
+}
+.numenumd-editor h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin: 1em 0 0.3em;
+}
+.numenumd-editor h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+}
+.numenumd-editor code {
+  background: rgba(135, 131, 120, 0.15);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-size: 0.85em;
+  color: #eb5757;
+}
+.numenumd-editor pre {
+  background: #f7f6f3;
+  border-radius: 4px;
+  padding: 16px;
+  overflow-x: auto;
+}
+.numenumd-editor pre code {
+  background: none;
+  color: inherit;
+}
+.numenumd-editor blockquote {
+  border-left: 3px solid #37352f;
+  margin: 0;
+  padding-left: 14px;
+}
+.numenumd-editor ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0;
+}
+
+/* カスタムノード NodeView */
+.numenumd-math-block,
+.numenumd-raw,
+[data-raw-block],
+.numenumd-frontmatter {
+  cursor: text;
+}
+.numenumd-math-block {
+  padding: 8px 4px;
+  text-align: center;
+}
+.numenumd-math-block-edit,
+.numenumd-raw-edit,
+.numenumd-frontmatter-edit {
+  width: 100%;
+  box-sizing: border-box;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.9em;
+  border: 1px solid #d9d9d6;
+  border-radius: 4px;
+  padding: 8px;
+  resize: vertical;
+}
+.numenumd-raw {
+  background: #fffbe6;
+  border: 1px dashed #d9c58a;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.numenumd-frontmatter {
+  color: #787774;
+  font-size: 0.85em;
+}
+.numenumd-frontmatter pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* スラッシュコマンドメニュー */
+.numenumd-slash-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px rgba(15, 15, 15, 0.05),
+    0 3px 6px rgba(15, 15, 15, 0.1),
+    0 9px 24px rgba(15, 15, 15, 0.2);
+  font:
+    14px/1.4 -apple-system,
+    'Hiragino Sans',
+    sans-serif;
+}
+.numenumd-slash-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #37352f;
+}
+.numenumd-slash-menu-item.is-selected,
+.numenumd-slash-menu-item:hover {
+  background: rgba(55, 53, 47, 0.08);
+}
+.numenumd-slash-menu-empty {
+  padding: 6px 10px;
+  color: #9b9a97;
+}

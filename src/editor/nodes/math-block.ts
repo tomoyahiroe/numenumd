@@ -93,7 +93,13 @@ export const MathBlock = Node.create({
         );
       };
 
+      // 'display' | 'edit'。クリックリスナは構築時に1本だけ張り、モードで
+      // 振り分ける({once:true} を renderDisplay のたびに積む方式は、update()
+      // 経由の再描画でリスナが重複し多重 renderEdit の原因になる)。
+      let mode: 'display' | 'edit' = 'display';
+
       const renderDisplay = () => {
+        mode = 'display';
         dom.innerHTML = '';
         const container = document.createElement('div');
         container.classList.add('numenumd-math-block-rendered');
@@ -106,8 +112,11 @@ export const MathBlock = Node.create({
           container.textContent = currentNode.attrs.latex;
         }
         dom.appendChild(container);
-        dom.addEventListener('click', renderEdit, { once: true });
       };
+
+      dom.addEventListener('click', () => {
+        if (mode === 'display') renderEdit();
+      });
 
       // 編集確定後にカーソルをブロック直後の段落へ移す(無ければ作る)。
       // これが無いと確定後にカーソルがどこにも置かれず、続きを書くために
@@ -133,6 +142,7 @@ export const MathBlock = Node.create({
       };
 
       const renderEdit = () => {
+        mode = 'edit';
         dom.innerHTML = '';
         const textarea = document.createElement('textarea');
         textarea.className = 'numenumd-math-block-edit';
@@ -150,6 +160,12 @@ export const MathBlock = Node.create({
           if (done) return;
           done = true;
           commit(textarea.value);
+          // 内容が変わっていない場合、commit の setNodeMarkup は同一 attrs の
+          // ノード置換になり ProseMirror が update() を呼ばない(node.eq で
+          // 既存 NodeView を再利用する)ため、ここで明示的に表示モードへ戻す。
+          // 変更があった場合は直後の update() が最新 attrs で再描画するので、
+          // この呼び出しは一瞬の同値描画にしかならず無害。
+          renderDisplay();
           if (exit) exitToNextParagraph();
         };
 

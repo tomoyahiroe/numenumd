@@ -219,3 +219,70 @@ describe('mathBlock exit keys (UX feedback)', () => {
     expect(editor.state.selection.$from.parent.textContent).toBe('tail');
   });
 });
+
+describe('mathBlock re-exit with unchanged content (bug report)', () => {
+  it('closes the editor on Cmd+Enter even when the latex was not changed', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [
+        { type: 'mathBlock', attrs: { latex: 'E = mc^2' } },
+        { type: 'paragraph' },
+      ],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+    act(() => {
+      fireEvent.click(mathDom);
+    });
+    const textarea = mathDom.querySelector('textarea')!;
+    act(() => {
+      // 値を変更せずにそのまま確定
+      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
+    });
+
+    expect(mathDom.querySelector('textarea')).toBeNull();
+    expect(mathDom.querySelector('.katex')).toBeTruthy();
+    const editor = window.__numenumdEditor__!;
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph');
+  });
+
+  it('closes the editor on Escape when the latex was not changed', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [{ type: 'mathBlock', attrs: { latex: 'x' } }],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+    act(() => {
+      fireEvent.click(mathDom);
+    });
+    act(() => {
+      fireEvent.keyDown(mathDom.querySelector('textarea')!, {
+        key: 'Escape',
+      });
+    });
+    expect(mathDom.querySelector('textarea')).toBeNull();
+  });
+
+  it('supports repeated open -> exit cycles without stacking click handlers', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [
+        { type: 'mathBlock', attrs: { latex: 'a' } },
+        { type: 'paragraph' },
+      ],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        fireEvent.click(mathDom);
+      });
+      expect(mathDom.querySelectorAll('textarea')).toHaveLength(1);
+      act(() => {
+        fireEvent.keyDown(mathDom.querySelector('textarea')!, {
+          key: 'Escape',
+        });
+      });
+      expect(mathDom.querySelector('textarea')).toBeNull();
+    }
+  });
+});

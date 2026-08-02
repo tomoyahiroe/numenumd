@@ -6,6 +6,12 @@ import { MarkdownEditor } from '../editor/Editor';
 import { KeyRouter } from '../keymap/router';
 import { FileController } from '../file/controller';
 import { pickerIdForPath } from '../file/picker-id';
+import {
+  resolveTheme,
+  nextPreference,
+  THEME_LABELS,
+  type ThemePreference,
+} from './theme';
 
 type Props = { rawMarkdown: string; filename: string };
 
@@ -130,6 +136,26 @@ export function App({ rawMarkdown, filename }: Props) {
     document.title = (dirty ? '● ' : '') + filename;
   }, [dirty, filename]);
 
+  // テーマ: 既定は OS 設定に追従(auto)。トグルで auto → light → dark を循環。
+  // スラッシュメニュー(tippy)が document.body 直下に生えるため、テーマの
+  // data 属性はアプリコンテナではなく documentElement に刻む。
+  // 永続化はしない(spec の「永続状態を持たない」原則。タブごとにリセット)。
+  const [themePref, setThemePref] = useState<ThemePreference>('auto');
+  useEffect(() => {
+    const mql = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const apply = () => {
+      document.documentElement.dataset.numenumdTheme = resolveTheme(
+        themePref,
+        mql?.matches ?? false,
+      );
+    };
+    apply();
+    if (themePref === 'auto' && mql?.addEventListener) {
+      mql.addEventListener('change', apply);
+      return () => mql.removeEventListener('change', apply);
+    }
+  }, [themePref]);
+
   return (
     <div className="numenumd-app">
       <header className="numenumd-header">
@@ -139,6 +165,15 @@ export function App({ rawMarkdown, filename }: Props) {
             ●
           </span>
         )}
+        <button
+          type="button"
+          data-testid="theme-toggle"
+          className="numenumd-theme-toggle"
+          title="テーマ切り替え(Auto / Light / Dark)"
+          onClick={() => setThemePref((p) => nextPreference(p))}
+        >
+          ◐ {THEME_LABELS[themePref]}
+        </button>
       </header>
       <MarkdownEditor
         initialDoc={initialDoc}

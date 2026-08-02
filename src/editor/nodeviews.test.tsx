@@ -152,3 +152,70 @@ describe('mathBlock creation focus (UX feedback)', () => {
     expect(mathDom!.querySelector('textarea')).toBeNull();
   });
 });
+
+describe('mathBlock exit keys (UX feedback)', () => {
+  const editAndPress = async (
+    key: string,
+    init: Partial<KeyboardEventInit>,
+  ) => {
+    const utils = await mountWith({
+      type: 'doc',
+      content: [{ type: 'mathBlock', attrs: { latex: 'x' } }],
+    });
+    const mathDom = utils.container.querySelector('[data-math-block]')!;
+    act(() => {
+      fireEvent.click(mathDom);
+    });
+    const textarea = mathDom.querySelector('textarea')!;
+    act(() => {
+      fireEvent.change(textarea, { target: { value: 'x + y' } });
+      fireEvent.keyDown(textarea, { key, ...init });
+    });
+    return { ...utils, mathDom };
+  };
+
+  it('Escape commits, closes the editor, and moves the cursor to a paragraph after the block', async () => {
+    const { mathDom } = await editAndPress('Escape', {});
+    const editor = window.__numenumdEditor__!;
+
+    expect(mathDom.querySelector('textarea')).toBeNull();
+    const json = editor.getJSON();
+    expect(json.content?.[0]).toMatchObject({
+      type: 'mathBlock',
+      attrs: { latex: 'x + y' },
+    });
+    // a paragraph is created after the block and the selection lands inside it
+    expect(json.content?.[1]?.type).toBe('paragraph');
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph');
+  });
+
+  it('Cmd+Enter commits and moves the cursor to the following paragraph', async () => {
+    const { mathDom } = await editAndPress('Enter', { metaKey: true });
+    const editor = window.__numenumdEditor__!;
+
+    expect(mathDom.querySelector('textarea')).toBeNull();
+    expect(editor.getJSON().content?.[1]?.type).toBe('paragraph');
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph');
+  });
+
+  it('reuses an existing following paragraph instead of inserting a new one', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [
+        { type: 'mathBlock', attrs: { latex: 'a' } },
+        { type: 'paragraph', content: [{ type: 'text', text: 'tail' }] },
+      ],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+    act(() => {
+      fireEvent.click(mathDom);
+    });
+    const textarea = mathDom.querySelector('textarea')!;
+    act(() => {
+      fireEvent.keyDown(textarea, { key: 'Escape' });
+    });
+    const editor = window.__numenumdEditor__!;
+    expect(editor.getJSON().content).toHaveLength(2);
+    expect(editor.state.selection.$from.parent.textContent).toBe('tail');
+  });
+});

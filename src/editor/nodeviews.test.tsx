@@ -286,3 +286,45 @@ describe('mathBlock re-exit with unchanged content (bug report)', () => {
     }
   });
 });
+
+describe('mathBlock katex rendering across repeated exits (bug report)', () => {
+  it('keeps katex rendering after two edit -> Cmd+Enter cycles with changed content', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [
+        { type: 'mathBlock', attrs: { latex: 'a' } },
+        { type: 'paragraph' },
+      ],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+
+    for (const [cycle, val] of [
+      ['1st', 'a + b'],
+      ['2nd', 'a + b + c'],
+    ] as const) {
+      act(() => {
+        fireEvent.click(mathDom);
+      });
+      const ta = mathDom.querySelector('textarea');
+      expect(ta, `${cycle}: textarea opens`).toBeTruthy();
+      act(() => {
+        fireEvent.change(ta!, { target: { value: val } });
+        fireEvent.keyDown(ta!, { key: 'Enter', metaKey: true });
+      });
+      expect(
+        mathDom.querySelector('textarea'),
+        `${cycle}: editor closes`,
+      ).toBeNull();
+      expect(
+        mathDom.querySelector('.katex'),
+        `${cycle}: katex is rendered`,
+      ).toBeTruthy();
+      expect(mathDom.textContent, `${cycle}: shows current formula`).toContain(
+        val.replace(/ /g, ''),
+      );
+    }
+
+    const editor = window.__numenumdEditor__!;
+    expect(editor.getJSON().content?.[0]?.attrs?.latex).toBe('a + b + c');
+  });
+});

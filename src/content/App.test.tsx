@@ -213,3 +213,56 @@ describe('App', () => {
     await waitFor(() => expect(screen.queryByTestId('dirty-dot')).toBeNull());
   });
 });
+
+describe('theme toggle (UX feedback)', () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.numenumdTheme;
+    vi.unstubAllGlobals();
+  });
+
+  const stubMatchMedia = (prefersDark: boolean) => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query.includes('dark') ? prefersDark : !prefersDark,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+  };
+
+  it('defaults to the OS preference (dark) and stamps it on the document root', async () => {
+    stubMatchMedia(true);
+    render(<App rawMarkdown={'x'} filename="note.md" />);
+    await waitFor(() => {
+      expect(document.documentElement.dataset.numenumdTheme).toBe('dark');
+    });
+    expect(screen.getByTestId('theme-toggle').textContent).toContain('Auto');
+  });
+
+  it('clicking the toggle cycles auto -> light -> dark -> auto', async () => {
+    stubMatchMedia(true);
+    render(<App rawMarkdown={'x'} filename="note.md" />);
+    const btn = await screen.findByTestId('theme-toggle');
+
+    act(() => {
+      btn.click();
+    });
+    expect(document.documentElement.dataset.numenumdTheme).toBe('light');
+    expect(btn.textContent).toContain('Light');
+
+    act(() => {
+      btn.click();
+    });
+    expect(document.documentElement.dataset.numenumdTheme).toBe('dark');
+    expect(btn.textContent).toContain('Dark');
+
+    act(() => {
+      btn.click();
+    });
+    // back to auto: OS is dark in this test
+    expect(document.documentElement.dataset.numenumdTheme).toBe('dark');
+    expect(btn.textContent).toContain('Auto');
+  });
+});

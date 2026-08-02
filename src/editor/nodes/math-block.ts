@@ -1,4 +1,5 @@
 import { Node, mergeAttributes, nodeInputRule } from '@tiptap/core';
+import { TextSelection } from 'prosemirror-state';
 import katex from 'katex';
 
 // ユーザー操作(`$$` 入力・スラッシュメニュー)で「いま」作られた mathBlock は
@@ -108,6 +109,29 @@ export const MathBlock = Node.create({
         dom.addEventListener('click', renderEdit, { once: true });
       };
 
+      // 編集確定後にカーソルをブロック直後の段落へ移す(無ければ作る)。
+      // これが無いと確定後にカーソルがどこにも置かれず、続きを書くために
+      // マウス操作(ギャップカーソル探し)が必要になってしまう。
+      const exitToNextParagraph = () => {
+        if (typeof getPos !== 'function') return;
+        const pos = getPos();
+        if (typeof pos !== 'number') return;
+        const node = editor.view.state.doc.nodeAt(pos);
+        const after = pos + (node?.nodeSize ?? currentNode.nodeSize);
+        editor
+          .chain()
+          .command(({ tr }) => {
+            const $after = tr.doc.resolve(after);
+            if ($after.nodeAfter?.type.name !== 'paragraph') {
+              tr.insert(after, tr.doc.type.schema.nodes.paragraph!.create());
+            }
+            tr.setSelection(TextSelection.create(tr.doc, after + 1));
+            return true;
+          })
+          .focus()
+          .run();
+      };
+
       const renderEdit = () => {
         dom.innerHTML = '';
         const textarea = document.createElement('textarea');
@@ -118,15 +142,27 @@ export const MathBlock = Node.create({
         // 同期 focus() が空振りするため、アタッチ完了後に focus する。
         queueMicrotask(() => textarea.focus());
 
-        const finish = () => {
+        // commit() が引き起こす update()(renderDisplay で textarea を除去)や
+        // exit 時のエディタ focus で blur が二重に発火するため、一度 finish
+        // したら以降の blur を無視する。
+        let done = false;
+        const finish = (exit: boolean) => {
+          if (done) return;
+          done = true;
           commit(textarea.value);
+          if (exit) exitToNextParagraph();
         };
 
-        textarea.addEventListener('blur', finish);
+        textarea.addEventListener('blur', () => finish(false));
         textarea.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Escape') {
+            ev.preventDefault();
+            finish(true);
+            return;
+          }
           if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') {
             ev.preventDefault();
-            finish();
+            finish(true);
           }
         });
       };

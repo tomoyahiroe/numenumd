@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="numenumd">
+  <!--
+    numenumd 拡張アイコンの単一ソース。
+    public/icons/icon-{16,32,48,128}.png は scripts/build-icons.mjs でここから
+    生成する(`npm run build:icons`)。PNG を直接編集しないこと。
+
+    フォントの有無に依存しないよう、文字はすべてストロークで描く
+    (rsvg-convert / ImageMagick は環境によって任意のフォントを解決できない)。
+    配色は src/editor/editor.css のテーマ変数に合わせている:
+      背景 #2f2d29 (light テーマの本文色 #37352f 系のチャコール)
+      アクセント #eb5757 (nd-accent と同色)
+
+    モチーフは "M" + 下向き矢印(Markdown の一般的な記号)。16px でも潰れない
+    よう、ストローク幅 12 / 線端を丸めた 2 要素だけに絞っている。
+  -->
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#2f2d29" />
+  <path
+    d="M27 90 V46 L50 74 L73 46 V90"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M97 46 V78"
+    fill="none"
+    stroke="#eb5757"
+    stroke-width="12"
+    stroke-linecap="round"
+  />
+  <path
+    d="M85 68 L97 81 L109 68"
+    fill="none"
+    stroke="#eb5757"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

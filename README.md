@@ -16,7 +16,13 @@ npm run test:watch  # vitest をウォッチモードで実行
 npm run lint      # eslint src
 npm run typecheck # tsc --noEmit
 npm run format    # prettier --write .(*.ts/tsx/css/md/json/yml 全体)
+
+npm run build:icons        # assets/icon.svg → public/icons/*.png(要 librsvg/ImageMagick)
+npm run build:store-assets # ストア掲載用の画像を docs/store-assets/ に生成
 ```
+
+`build:icons` と `build:store-assets` は生成物をコミットする前提の手動コマンドで、
+`npm run build` や CI からは呼ばれない。
 
 コミット時は husky + lint-staged により、ステージされた `*.ts`/`*.tsx` に対する
 `eslint --fix` + `prettier --write`、`*.css`/`*.md`/`*.json`/`*.yml` に対する
@@ -64,8 +70,18 @@ numenumd カードにある更新(circular arrow)アイコンを押すか、い�
      push 自体は安全に行える。
    - Secrets のセットアップ手順(Chrome Web Store デベロッパー登録、OAuth
      クライアントの作成、GitHub Secrets への登録項目)は
-     [`docs/superpowers/specs/2026-08-01-numenumd-design.md`](docs/superpowers/specs/2026-08-01-numenumd-design.md)
-     の「Chrome Web Store 自動デプロイ(CD)」節を参照。
+     [`docs/publishing.md`](docs/publishing.md) を参照。
+
+## ストアへの公開
+
+初回公開(デベロッパー登録 → アイテム作成 → 審査提出)と CD 有効化までの
+手順は [`docs/publishing.md`](docs/publishing.md)、ダッシュボードに貼り付ける
+掲載文面は [`docs/store-listing.md`](docs/store-listing.md) にまとめてある。
+掲載画像は `docs/store-assets/` にあり、`npm run build:store-assets` で
+再生成できる(→ [`tools/store-screenshots/README.md`](tools/store-screenshots/README.md))。
+
+プライバシーポリシーは [`PRIVACY.md`](PRIVACY.md)。numenumd は情報を一切
+収集・送信しない。
 
 ## 主な機能
 
@@ -98,7 +114,9 @@ numenumd カードにある更新(circular arrow)アイコンを押すか、い�
 
 ## 既知の制限 / TODO
 
-- 拡張機能アイコン(`manifest` の `icons`)が未整備で、`chrome://extensions` や
-  ツールバー上ではデフォルトのプレースホルダーアイコンのまま表示される。
+- ToDo リスト(`- [ ]` / `- [x]`)の表示が崩れる。`ul[data-type='taskList']` の
+  `li` に flex レイアウトが無いため、チェックボックスと本文が別の行に分かれる。
+- インラインコード内の `$…$` が数式として描画されてしまう(表示のみの問題で、
+  保存される Markdown は元のまま保たれる)。
 - Vim 風モーダル編集などの Phase 2/3 機能は MVP のスコープ外(`KeyRouter` は
   将来の拡張を見越した設計のみ済み)。

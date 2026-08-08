@@ -1,12 +1,14 @@
 {
   "name": "numenumd-mvp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Notion-like WYSIWYG editor for local Markdown files",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/check-dist-encoding.mjs",
+    "build:icons": "node scripts/build-icons.mjs",
+    "build:store-assets": "node tools/store-screenshots/capture.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src",

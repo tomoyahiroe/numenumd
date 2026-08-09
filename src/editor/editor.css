@@ -229,9 +229,13 @@ body {
   /* グリップ帯と + ボタンを置く余白。 */
   padding: 10px 20px 20px 10px;
 }
+/* グリップ帯の居場所を padding で確保する。`overflow-x: auto` を指定すると
+   もう一方の軸も `auto` に計算されるため、負のオフセット(表の外側)に置いた
+   グリップは切り取られてしまう。常に正の座標に収まるようにする。 */
 .numenumd-table-scroll {
   position: relative;
   overflow-x: auto;
+  padding: 9px 0 0 9px;
 }
 .numenumd-editor table {
   border-collapse: collapse;
@@ -281,7 +285,9 @@ body {
 }
 .numenumd-table-grip {
   position: absolute;
-  background: var(--nd-border);
+  /* --nd-border は罫線用の極薄いグレーで、白背景ではまず見えない。
+     掴める場所だと分かる必要があるので入力欄の枠線と同じ濃さにする。 */
+  background: var(--nd-input-border);
   border-radius: 2px;
   cursor: pointer;
 }
@@ -289,11 +295,11 @@ body {
   background: var(--nd-muted);
 }
 .numenumd-table-grips-col .numenumd-table-grip {
-  top: -8px;
+  top: 1px;
   height: 5px;
 }
 .numenumd-table-grips-row .numenumd-table-grip {
-  left: -8px;
+  left: 1px;
   width: 5px;
 }
 .numenumd-table-add {

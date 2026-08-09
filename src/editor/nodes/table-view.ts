@@ -16,6 +16,9 @@ import { CellSelection, TableMap } from 'prosemirror-tables';
  * ProseMirror の管理下(= ドキュメントの内容)に入ってしまう。そのため
  * contentDOM の外に絶対配置し、実際のセルの座標を測って位置を合わせる。
  */
+/** 隣り合うグリップの間に空ける余白(px)。無いと1本の帯に見えて掴み分けられない。 */
+const GRIP_GAP = 2;
+
 function measurable(el: HTMLElement): { offset: number; size: number } {
   // jsdom では offsetLeft / offsetWidth が常に 0 になる。座標合わせは
   // 表示上の都合でしかないので、測れない環境では 0 のまま置く(グリップ自体は
@@ -166,15 +169,15 @@ export const tableNodeView: NodeViewRenderer = ({ editor, node, getPos }) => {
         const cell = firstRow.cells[i];
         if (!(grip instanceof HTMLElement) || !cell) return;
         const { offset, size } = measurable(cell);
-        grip.style.left = `${offset}px`;
-        grip.style.width = `${size}px`;
+        grip.style.left = `${offset + GRIP_GAP}px`;
+        grip.style.width = `${Math.max(0, size - GRIP_GAP * 2)}px`;
       });
     }
     Array.from(rowGrips.children).forEach((grip, i) => {
       const row = table.rows[i];
       if (!(grip instanceof HTMLElement) || !row) return;
-      grip.style.top = `${row.offsetTop}px`;
-      grip.style.height = `${row.offsetHeight}px`;
+      grip.style.top = `${row.offsetTop + GRIP_GAP}px`;
+      grip.style.height = `${Math.max(0, row.offsetHeight - GRIP_GAP * 2)}px`;
     });
   };
 

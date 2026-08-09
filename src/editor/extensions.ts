@@ -7,6 +7,7 @@ import Mathematics from '@tiptap/extension-mathematics';
 import { MathBlock } from './nodes/math-block';
 import { RawBlock } from './nodes/raw-block';
 import { Frontmatter } from './nodes/frontmatter';
+import { tableExtensions } from './nodes/table';
 import { SlashCommand } from './slash/suggestion';
 import { createMathSpanRegex } from '../markdown/math-spans';
 
@@ -92,6 +93,7 @@ export function buildExtensions(): Extensions {
     MathBlock,
     RawBlock,
     Frontmatter,
+    ...tableExtensions(),
     SlashCommand,
   ];
 }

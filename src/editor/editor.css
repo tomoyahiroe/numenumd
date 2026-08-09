@@ -222,6 +222,117 @@ body {
   word-break: break-word;
 }
 
+/* 表 */
+.numenumd-table-wrap {
+  position: relative;
+  margin: 16px 0;
+  /* グリップ帯と + ボタンを置く余白。 */
+  padding: 10px 20px 20px 10px;
+}
+/* グリップ帯の居場所を padding で確保する。`overflow-x: auto` を指定すると
+   もう一方の軸も `auto` に計算されるため、負のオフセット(表の外側)に置いた
+   グリップは切り取られてしまう。常に正の座標に収まるようにする。 */
+.numenumd-table-scroll {
+  position: relative;
+  overflow-x: auto;
+  padding: 9px 0 0 9px;
+}
+.numenumd-editor table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0;
+}
+.numenumd-editor th,
+.numenumd-editor td {
+  border: 1px solid var(--nd-border);
+  padding: 6px 10px;
+  vertical-align: top;
+  min-width: 3em;
+}
+.numenumd-editor th {
+  background: var(--nd-pre-bg);
+  font-weight: 600;
+  text-align: left;
+}
+.numenumd-editor th p,
+.numenumd-editor td p {
+  margin: 0;
+}
+.numenumd-editor .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--nd-hover);
+  pointer-events: none;
+}
+.numenumd-editor th,
+.numenumd-editor td {
+  position: relative;
+}
+
+/* 行/列のグリップ帯と追加ボタン。カーソルが表の中にある間だけ出す。 */
+.numenumd-table-grips,
+.numenumd-table-add {
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+.numenumd-table-wrap.is-active .numenumd-table-grips,
+.numenumd-table-wrap.is-active .numenumd-table-add {
+  opacity: 1;
+  pointer-events: auto;
+}
+.numenumd-table-grip {
+  position: absolute;
+  /* --nd-border は罫線用の極薄いグレーで、白背景ではまず見えない。
+     掴める場所だと分かる必要があるので入力欄の枠線と同じ濃さにする。 */
+  background: var(--nd-input-border);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.numenumd-table-grip:hover {
+  background: var(--nd-muted);
+}
+.numenumd-table-grips-col .numenumd-table-grip {
+  top: 1px;
+  height: 5px;
+}
+.numenumd-table-grips-row .numenumd-table-grip {
+  left: 1px;
+  width: 5px;
+}
+.numenumd-table-add {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--nd-border);
+  border-radius: 4px;
+  background: var(--nd-bg);
+  color: var(--nd-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.numenumd-table-add:hover {
+  background: var(--nd-hover);
+  color: var(--nd-text);
+}
+.numenumd-table-add-col {
+  top: 10px;
+  right: 0;
+  bottom: 20px;
+  width: 16px;
+}
+.numenumd-table-add-row {
+  left: 10px;
+  right: 20px;
+  bottom: 0;
+  height: 16px;
+}
+
 /* スラッシュコマンドメニュー */
 .numenumd-slash-menu {
   display: flex;

@@ -80,6 +80,18 @@ export const SLASH_ITEMS: SlashItem[] = [
     },
   },
   {
+    title: 'Table',
+    keywords: ['table', 'grid', '表', 'テーブル'],
+    command: (editor, range) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .run();
+    },
+  },
+  {
     title: 'Math block',
     keywords: ['math', 'latex', 'equation', '数式'],
     command: (editor, range) => {

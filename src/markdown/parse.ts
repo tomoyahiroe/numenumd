@@ -6,14 +6,19 @@ import type {
   StateBlock,
   StateCore,
   StateInline,
+  Token,
 } from 'markdown-it';
 import { MarkdownParser, type ParseSpec } from 'prosemirror-markdown';
 import { buildExtensions } from '../editor/extensions';
+import type { CellAlignment } from '../editor/nodes/table';
 import { splitFrontmatter } from './frontmatter';
 import { matchMathSpanAt } from './math-spans';
+import { splitTableRow } from './table-cells';
 import { matchFootnoteMarkerAt, matchImageSpanAt } from './verbatim-spans';
 
 const TASK_ITEM_RE = /^\[([ xX])\]\s+/;
+
+const TEXT_ALIGN_RE = /text-align:\s*(left|center|right)/;
 
 /**
  * ブロック数式ルール: 行頭 `$$` から次の `$$` のみの行までを
@@ -153,6 +158,50 @@ function footnoteMarkerRule(state: StateInline, silent: boolean): boolean {
 }
 
 /**
+ * markdown-it 内部の `getLine`(`rules_block/table.ts`)と同一の行取得。
+ * コンテナ(blockquote・list)の中では `bMarks`/`tShift` がマーカーの後ろを
+ * 指すよう調整済みなので、これだけで `> ` やインデントを含まない行が得られる。
+ */
+function getLine(state: StateBlock, line: number): string {
+  const pos = (state.bMarks[line] ?? 0) + (state.tShift[line] ?? 0);
+  const max = state.eMarks[line] ?? pos;
+  return state.src.slice(pos, max);
+}
+
+/**
+ * この表を編集可能な `table` ノードに変換すると、ユーザーが書いた情報が
+ * 落ちてしまうかどうかを判定する。
+ *
+ * GFM(および markdown-it の実装)は、本文行がヘッダ行より多いセルを持つとき
+ * 超過分を**黙って捨てる**(`for (let i = 0; i < columnCount; i++)` で
+ * ヘッダのセル数までしかトークンを作らない)。この状態で `table` ノードに
+ * してしまうと、保存した瞬間にユーザーが書いたセルが消える。
+ *
+ * そこで超過セルを持つ表だけは従来どおり `rawBlock` として verbatim 保全し、
+ * 編集対象から外す(「ユーザーの Markdown を絶対に失わない」原則)。
+ * 逆にセル数が足りない行は空セルが補完されるだけで情報は落ちないため、
+ * 変換を許す。
+ *
+ * セルの数え方は必ず `splitTableRow`(markdown-it の `escapedSplit` と同一)を
+ * 使う。ここで数え方がズレると、変換して良い表かどうかの判断そのものが
+ * 狂ってしまう。
+ *
+ * @param endLine 表の終端(= 元ルール実行後の `state.line`、排他)
+ */
+function tableDropsCells(
+  state: StateBlock,
+  startLine: number,
+  endLine: number,
+): boolean {
+  const headerCells = splitTableRow(getLine(state, startLine)).length;
+  // 本文行は「ヘッダ行 + デリミタ行」の次から表の終端まで。
+  for (let line = startLine + 2; line < endLine; line++) {
+    if (splitTableRow(getLine(state, line)).length > headerCells) return true;
+  }
+  return false;
+}
+
+/**
  * 指定した名前のブロックルール(`table` / `html_block` / `reference`)を
  * verbatim 保全な単一の `raw_block` トークンへ差し替えるラッパーを作る。
  *
@@ -167,9 +216,18 @@ function footnoteMarkerRule(state: StateInline, silent: boolean): boolean {
  * 生成されたトークン列だけを破棄して、`fence`/`math_block` と同じ
  * `state.getLines(start, end, state.blkIndent, true)` によるコンテナ考慮済みの
  * verbatim テキストで単一の `raw_block` トークンに置き換える。
+ *
+ * `shouldWrap` を渡した場合は、元ルールが成立したうえでその述語が true を
+ * 返したときだけ `raw_block` へ差し替える。false のときは元ルールが積んだ
+ * トークンをそのまま通す(表のハイブリッド判定に使う。`tableDropsCells` 参照)。
  */
 function wrapAsRawBlock(
   originalName: 'table' | 'html_block' | 'reference',
+  shouldWrap?: (
+    state: StateBlock,
+    startLine: number,
+    endLine: number,
+  ) => boolean,
 ): (
   state: StateBlock,
   startLine: number,
@@ -187,6 +245,7 @@ function wrapAsRawBlock(
     if (!matched || silent) return matched;
 
     const endLine2 = state.line;
+    if (shouldWrap && !shouldWrap(state, startLine, endLine2)) return true;
     // 元のルールが積んだトークン(table_open...table_close、html_block、
     // reference_definition 等)は使わず、raw_block 1個に差し替える。
     state.tokens.length = tokenCountBefore;
@@ -288,6 +347,33 @@ function taskListRule(state: StateCore): void {
 }
 
 /**
+ * 表のセル(`th` / `td`)の中身を `paragraph` トークンで包む core ルール。
+ *
+ * markdown-it は `th_open, inline, th_close` という「セル直下にインライン」の
+ * 形でトークンを積むが、本スキーマの `tableCell` / `tableHeader` は
+ * content を `paragraph` に制限している(GFM のセルにはインラインしか書けない
+ * ため、リストやコードブロックを作らせない方針。spec 参照)。
+ *
+ * この食い違いを放置すると、`MarkdownParser` の `closeNode` が呼ぶ
+ * `type.createAndFill()` が「テキストを直接子に持つ tableCell」を作れずに
+ * `null` を返し、**セルが黙って消える**(例外も出ない)。ここで段落を挿して
+ * スキーマに合わせる。
+ */
+function tableCellParagraphRule(state: StateCore): void {
+  const wrapped: Token[] = [];
+  for (const tok of state.tokens) {
+    if (tok.type === 'th_close' || tok.type === 'td_close') {
+      wrapped.push(new state.Token('paragraph_close', 'p', -1));
+    }
+    wrapped.push(tok);
+    if (tok.type === 'th_open' || tok.type === 'td_open') {
+      wrapped.push(new state.Token('paragraph_open', 'p', 1));
+    }
+  }
+  state.tokens = wrapped;
+}
+
+/**
  * スキーマに `image` ノードが存在しないため、インライン画像は完全に消えてしまう
  * (`image` トークンにハンドラが無いと MarkdownParser が例外を投げ、`parseBody` の
  * フォールバックで文書全体が単一 rawBlock に潰れてしまう)。
@@ -329,9 +415,14 @@ function buildMarkdownIt(): MarkdownItInstance {
   // table / html_block / reference(参照リンク定義)は、コンテナ(blockquote・list)の
   // マーカーを混入させずに verbatim 保全するため、post-hoc なトークン置換ではなく
   // ブロックルールそのものをラップする(wrapAsRawBlock 参照)。
-  md.block.ruler.before('table', 'raw_table', wrapAsRawBlock('table'), {
-    alt: ['paragraph', 'reference'],
-  });
+  // 表は「情報が落ちる場合だけ」rawBlock に落とす(それ以外は編集可能な
+  // table ノードとして通す)。判定は tableDropsCells を参照。
+  md.block.ruler.before(
+    'table',
+    'raw_table',
+    wrapAsRawBlock('table', tableDropsCells),
+    { alt: ['paragraph', 'reference'] },
+  );
   md.block.ruler.before(
     'reference',
     'raw_reference',
@@ -351,8 +442,21 @@ function buildMarkdownIt(): MarkdownItInstance {
   md.inline.ruler.before('escape', 'image_verbatim', imageVerbatimRule);
   md.inline.ruler.before('escape', 'footnote_marker', footnoteMarkerRule);
   md.core.ruler.before('inline', 'task_list', taskListRule);
+  md.core.ruler.push('table_cell_paragraph', tableCellParagraphRule);
   md.core.ruler.push('inline_fallback_to_text', inlineFallbackToTextRule);
   return md;
+}
+
+/**
+ * markdown-it が各セルに配る `style="text-align:…"` から揃えを読む。
+ * Markdown 上の指定は列単位(デリミタ行の `:---:`)だが、トークンには
+ * セル単位で乗ってくる。
+ */
+function alignmentOf(tok: Token): CellAlignment {
+  const style = tok.attrGet('style');
+  if (!style) return null;
+  const matched = TEXT_ALIGN_RE.exec(String(style));
+  return (matched?.[1] as CellAlignment | undefined) ?? null;
 }
 
 function buildTokenMap(): Record<string, ParseSpec> {
@@ -389,6 +493,21 @@ function buildTokenMap(): Record<string, ParseSpec> {
       node: 'rawBlock',
       getAttrs: (tok) => ({ content: tok.content }),
       noCloseToken: true,
+    },
+    // 表。`thead` / `tbody` はスキーマに対応ノードが無い(table の content は
+    // `tableRow+`)ので読み飛ばす。セルの中身は `tableCellParagraphRule` が
+    // 挿した `paragraph` トークンが受ける。
+    table: { block: 'table' },
+    thead: { ignore: true },
+    tbody: { ignore: true },
+    tr: { block: 'tableRow' },
+    th: {
+      block: 'tableHeader',
+      getAttrs: (tok) => ({ alignment: alignmentOf(tok) }),
+    },
+    td: {
+      block: 'tableCell',
+      getAttrs: (tok) => ({ alignment: alignmentOf(tok) }),
     },
     hr: { node: 'horizontalRule' },
     hardbreak: { node: 'hardBreak' },

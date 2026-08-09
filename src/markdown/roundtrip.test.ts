@@ -25,7 +25,7 @@ describe('serialize', () => {
   });
 
   it('writes rawBlock content verbatim', () => {
-    const md = '| a | b |\n| --- | --- |\n| 1 | 2 |\n';
+    const md = '<div class="note">\nhi\n</div>\n';
     expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
   });
 
@@ -302,5 +302,86 @@ describe('empty document handling (review finding 3)', () => {
   it('mdToMd on an empty string resolves without throwing', async () => {
     const result = await mdToMd('');
     expect(typeof result).toBe('string');
+  });
+});
+
+// 表(GFM パイプテーブル)の往復。spec「テーブル(GFM パイプテーブル)」節の
+// 決定を、実際の入出力として固定する。
+describe('tables round-trip through table nodes', () => {
+  const serialized = (md: string) => serializeMarkdown(parseMarkdown(md));
+
+  it('writes a plain table back unchanged', () => {
+    const md = '| a | b |\n| --- | --- |\n| 1 | 2 |\n';
+    expect(serialized(md)).toBe(md);
+  });
+
+  it('normalizes a tightly written table into the canonical form', () => {
+    expect(serialized('|a|b|\n|-|-|\n|1|2|\n')).toBe(
+      '| a | b |\n| --- | --- |\n| 1 | 2 |\n',
+    );
+  });
+
+  it('keeps column alignment', () => {
+    expect(
+      serialized('| l | c | r |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |\n'),
+    ).toBe('| l | c | r |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |\n');
+  });
+
+  it('re-escapes a pipe inside a cell so the column count is preserved', () => {
+    const md = '| a | b |\n| --- | --- |\n| x \\| y | z |\n';
+    expect(serialized(md)).toBe(md);
+    // 二度目も同じ = バックスラッシュが増殖しない。
+    expect(serialized(serialized(md))).toBe(md);
+  });
+
+  it('pads a short row with an empty cell', () => {
+    expect(serialized('| a | b |\n| --- | --- |\n| 1 |\n')).toBe(
+      '| a | b |\n| --- | --- |\n| 1 |  |\n',
+    );
+  });
+
+  it('does not escape leading block markers inside a cell', () => {
+    // セルの中では `- ` は箇条書きを始めないので、`\- ` にする必要はない。
+    const md = '| a |\n| --- |\n| - x |\n';
+    expect(serialized(md)).toBe(md);
+  });
+
+  it('keeps inline math and images intact inside cells', () => {
+    const md = '| a | b |\n| --- | --- |\n| $x_{i}$ | ![i](p.png) |\n';
+    expect(serialized(md)).toBe(md);
+  });
+
+  it('keeps a table inside a blockquote prefixed with >', () => {
+    const md = '> | a | b |\n> | --- | --- |\n> | 1 | 2 |\n';
+    expect(serialized(md)).toBe(md);
+  });
+
+  it('keeps a table inside a list item indented', () => {
+    const md = '- item\n\n  | a | b |\n  | --- | --- |\n  | 1 | 2 |\n';
+    expect(serialized(md)).toBe(md);
+  });
+
+  // ハイブリッドの肝。ヘッダ列数を超えるセルは GFM が捨てるので、そういう表は
+  // table ノードに変換せず rawBlock のまま1バイトも変えずに書き戻す。
+  it('writes a table with excess cells back byte-for-byte', () => {
+    const md = '| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n';
+    expect(serialized(md)).toBe(md);
+    expect(parseMarkdown(md).content?.[0]?.type).toBe('rawBlock');
+  });
+
+  it('keeps every table shape idempotent through mdToMd', async () => {
+    const cases = [
+      '| a | b |\n| --- | --- |\n| 1 | 2 |\n',
+      '|a|b|\n|-|-|\n|1|2|\n',
+      '| l | c | r |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |\n',
+      '| a | b |\n| --- | --- |\n| x \\| y | z |\n',
+      '| a | b |\n| --- | --- |\n| 1 |\n',
+      '| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n',
+      '> | a | b |\n> | --- | --- |\n> | 1 | 2 |\n',
+    ];
+    for (const md of cases) {
+      const once = await mdToMd(md);
+      expect(await mdToMd(once), md).toBe(once);
+    }
   });
 });

@@ -328,3 +328,188 @@ describe('mathBlock katex rendering across repeated exits (bug report)', () => {
     expect(editor.getJSON().content?.[0]?.attrs?.latex).toBe('a + b + c');
   });
 });
+
+// 表の編集 UI(spec「テーブル(GFM パイプテーブル)」節)。
+// jsdom では要素の実寸(offsetWidth 等)が取れないため、グリップの座標合わせは
+// 検証できない。ここでは「UI が存在すること」と「操作が正しいコマンドに
+// 繋がっていること」を DOM 経由で固定する。
+describe('table NodeView', () => {
+  const tableDoc = (rows: string[][]) => ({
+    type: 'doc',
+    content: [
+      {
+        type: 'table',
+        content: rows.map((cells, rowIndex) => ({
+          type: 'tableRow',
+          content: cells.map((text) => ({
+            type: rowIndex === 0 ? 'tableHeader' : 'tableCell',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+          })),
+        })),
+      },
+    ],
+  });
+
+  const size = () => {
+    const table = window.__numenumdEditor__!.getJSON().content?.[0];
+    return {
+      rows: table?.content?.length ?? 0,
+      cols: table?.content?.[0]?.content?.length ?? 0,
+    };
+  };
+
+  it('renders one grip per column and per row', async () => {
+    const { container } = await mountWith(
+      tableDoc([
+        ['a', 'b', 'c'],
+        ['1', '2', '3'],
+      ]),
+    );
+    expect(
+      container.querySelectorAll(
+        '.numenumd-table-grips-col .numenumd-table-grip',
+      ),
+    ).toHaveLength(3);
+    expect(
+      container.querySelectorAll(
+        '.numenumd-table-grips-row .numenumd-table-grip',
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('adds a column with the right-edge + button', async () => {
+    const { container } = await mountWith(
+      tableDoc([
+        ['a', 'b'],
+        ['1', '2'],
+      ]),
+    );
+    expect(size()).toEqual({ rows: 2, cols: 2 });
+
+    act(() => {
+      fireEvent.mouseDown(container.querySelector('.numenumd-table-add-col')!);
+    });
+    expect(size()).toEqual({ rows: 2, cols: 3 });
+  });
+
+  it('adds a row with the bottom-edge + button', async () => {
+    const { container } = await mountWith(
+      tableDoc([
+        ['a', 'b'],
+        ['1', '2'],
+      ]),
+    );
+
+    act(() => {
+      fireEvent.mouseDown(container.querySelector('.numenumd-table-add-row')!);
+    });
+    expect(size()).toEqual({ rows: 3, cols: 2 });
+  });
+
+  it('selects a whole column when its grip is clicked, and Backspace deletes it', async () => {
+    const { container } = await mountWith(
+      tableDoc([
+        ['a', 'b', 'c'],
+        ['1', '2', '3'],
+      ]),
+    );
+    const editor = window.__numenumdEditor__!;
+
+    act(() => {
+      fireEvent.mouseDown(
+        container.querySelectorAll(
+          '.numenumd-table-grips-col .numenumd-table-grip',
+        )[1]!,
+      );
+    });
+    // 列全体が選択されている(= 行選択ではない)。
+    const selection = editor.state.selection as unknown as {
+      isColSelection?: () => boolean;
+    };
+    expect(selection.isColSelection?.()).toBe(true);
+
+    act(() => {
+      editor.commands.keyboardShortcut('Backspace');
+    });
+    expect(size()).toEqual({ rows: 2, cols: 2 });
+    const headers = editor
+      .getJSON()
+      .content?.[0]?.content?.[0]?.content?.map(
+        (cell) => cell.content?.[0]?.content?.[0]?.text,
+      );
+    expect(headers).toEqual(['a', 'c']);
+  });
+
+  it('selects a whole row when its grip is clicked, and Backspace deletes it', async () => {
+    const { container } = await mountWith(
+      tableDoc([
+        ['a', 'b'],
+        ['1', '2'],
+        ['3', '4'],
+      ]),
+    );
+    const editor = window.__numenumdEditor__!;
+
+    act(() => {
+      fireEvent.mouseDown(
+        container.querySelectorAll(
+          '.numenumd-table-grips-row .numenumd-table-grip',
+        )[1]!,
+      );
+    });
+    const selection = editor.state.selection as unknown as {
+      isRowSelection?: () => boolean;
+    };
+    expect(selection.isRowSelection?.()).toBe(true);
+
+    act(() => {
+      editor.commands.keyboardShortcut('Backspace');
+    });
+    expect(size()).toEqual({ rows: 2, cols: 2 });
+  });
+
+  it('marks the wrapper active only while the cursor sits inside the table', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [
+        ...(tableDoc([
+          ['a', 'b'],
+          ['1', '2'],
+        ]).content ?? []),
+        { type: 'paragraph', content: [{ type: 'text', text: 'after' }] },
+      ],
+    });
+    const editor = window.__numenumdEditor__!;
+    const wrap = container.querySelector('.numenumd-table-wrap')!;
+
+    act(() => {
+      editor.commands.setTextSelection(3); // 表の最初のセルの中
+    });
+    expect(wrap.classList.contains('is-active')).toBe(true);
+
+    act(() => {
+      editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    });
+    expect(wrap.classList.contains('is-active')).toBe(false);
+  });
+
+  // GFM のセルは改行を表現できない。Shift+Enter が通ると `\` が書き出されて
+  // 表が壊れるので、セル内では無効化する。
+  it('does not insert a hard break inside a cell', async () => {
+    await mountWith(
+      tableDoc([
+        ['a', 'b'],
+        ['1', '2'],
+      ]),
+    );
+    const editor = window.__numenumdEditor__!;
+
+    act(() => {
+      editor.commands.setTextSelection(3);
+      editor.commands.keyboardShortcut('Shift-Enter');
+    });
+
+    const cell = editor.getJSON().content?.[0]?.content?.[0]?.content?.[0];
+    expect(cell?.content?.[0]?.content?.map((n) => n.type)).toEqual(['text']);
+  });
+});

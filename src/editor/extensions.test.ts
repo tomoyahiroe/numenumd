@@ -32,6 +32,10 @@ describe('buildExtensions', () => {
       'mathBlock',
       'rawBlock',
       'frontmatter',
+      'table',
+      'tableRow',
+      'tableHeader',
+      'tableCell',
     ]) {
       expect(nodes[n], `node ${n}`).toBeDefined();
     }
@@ -83,6 +87,25 @@ describe('buildExtensions', () => {
       type: 'rawBlock',
       attrs: { content: '| a | b |\n|---|---|' },
     });
+  });
+
+  // GFM のセルにはインラインしか書けない。tiptap 既定の `block+` のままだと
+  // セル内にリストやコードブロックを作れてしまい、保存時に必ず表が壊れる。
+  it('restricts table cells to a single paragraph', () => {
+    const editor = makeEditor();
+    for (const name of ['tableCell', 'tableHeader']) {
+      const spec = editor.schema.nodes[name]!.spec;
+      expect(spec.content, `${name} content`).toBe('paragraph');
+    }
+  });
+
+  it('gives table cells an alignment attribute so :---: survives a round trip', () => {
+    const editor = makeEditor();
+    for (const name of ['tableCell', 'tableHeader']) {
+      const attrs = editor.schema.nodes[name]!.spec.attrs ?? {};
+      expect(attrs.alignment, `${name} alignment`).toBeDefined();
+      expect(attrs.alignment?.default ?? null).toBeNull();
+    }
   });
 
   it('frontmatter restores content when parsed back from its rendered HTML', () => {

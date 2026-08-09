@@ -6,7 +6,9 @@ import {
 import { getSchema, type JSONContent } from '@tiptap/core';
 import { Node as PMNode } from 'prosemirror-model';
 import { buildExtensions } from '../editor/extensions';
+import type { CellAlignment } from '../editor/nodes/table';
 import { joinFrontmatter } from './frontmatter';
+import { escapeTableCell } from './table-cells';
 import { findVerbatimSpans } from './verbatim-spans';
 
 const schema = getSchema(buildExtensions());
@@ -37,6 +39,21 @@ const LIST_ITEM_TASK_MARKER_RE = /^\[[ xX]\] /;
  * 同じ doc → 同じ出力になる。
  */
 let unescapeLeadingTaskMarker = false;
+
+/**
+ * 表のセルを描画している間だけ true。
+ *
+ * `safeEsc` の `startOfLine` 分岐は、行頭の `- ` `# ` `1. ` `> ` を
+ * 「ブロック記法として解釈されないように」エスケープする。しかし表のセルの
+ * 中では箇条書きも見出しも始められないので、このエスケープは意味を持たない。
+ * 効かせたままだと `| - x |` が `| \- x |` に化けて、ユーザーが書いた記述と
+ * 見た目が変わってしまう(往復自体は安定するが、無意味なノイズが増える)。
+ *
+ * セルの描画は `renderTableCell` が別 serializer を再入させる形で行うため、
+ * 文脈を知っているそちら側でフラグを立てる(`unescapeLeadingTaskMarker` と
+ * 同じ流儀)。
+ */
+let insideTableCell = false;
 
 /** `listItem` の先頭が段落で、その先頭テキストがタスクマーカーで始まるか。 */
 function hasLeadingTaskMarker(node: PMNode): boolean {
@@ -124,7 +141,7 @@ function safeEsc(
     }
     return '\\' + m;
   });
-  if (startOfLine) {
+  if (startOfLine && !insideTableCell) {
     result = result
       .replace(/^(\+[ ]|[-*>])/, '\\$&')
       .replace(/^(\s*)(#{1,6})(\s|$)/, '$1\\$2$3')
@@ -133,85 +150,211 @@ function safeEsc(
   return result;
 }
 
-const serializer = new MarkdownSerializer(
-  {
-    paragraph: d.nodes.paragraph!,
-    heading: d.nodes.heading!,
-    blockquote: d.nodes.blockquote!,
-    // 既定の code_block は `node.attrs.params` を読むが、本スキーマの
-    // codeBlock ノードの言語属性は `language`(tiptap CodeBlock の attrs 名)
-    // なので、フェンス情報文字列にそれを使う独自実装にする。
-    codeBlock: (state, node) => {
-      const backticks = node.textContent.match(/`{3,}/gm);
-      const fence = backticks ? backticks.sort().slice(-1)[0] + '`' : '```';
-      state.write(fence + (node.attrs.language || '') + '\n');
-      state.text(node.textContent, false);
-      state.write('\n');
-      state.write(fence);
-      state.closeBlock(node);
-    },
-    bulletList: (state, node) => state.renderList(node, '  ', () => '- '),
-    // 既定の ordered_list は `node.attrs.order` を読むが、本スキーマの
-    // orderedList ノードの開始番号属性は `start`(tiptap OrderedList の attrs 名)
-    // なのでそれを使う独自実装にする。
-    orderedList: (state, node) => {
-      const start = (node.attrs.start as number | undefined) ?? 1;
-      const maxW = String(start + node.childCount - 1).length;
-      const space = state.repeat(' ', maxW + 2);
-      state.renderList(node, space, (i) => {
-        const nStr = String(start + i);
-        return state.repeat(' ', maxW - nStr.length) + nStr + '. ';
-      });
-    },
-    // 既定の list_item は `state.renderContent(node)` するだけ。ここでは
-    // 先頭のタスクマーカーをエスケープさせないフラグ制御だけを足している
-    // (`unescapeLeadingTaskMarker` の説明を参照)。
-    listItem: (state, node) => {
-      const previous = unescapeLeadingTaskMarker;
-      unescapeLeadingTaskMarker = hasLeadingTaskMarker(node);
-      try {
-        state.renderContent(node);
-      } finally {
-        unescapeLeadingTaskMarker = previous;
+/** 揃え属性 → デリミタ行のセル表記。 */
+const ALIGNMENT_DELIMITER: Record<'left' | 'center' | 'right', string> = {
+  left: ':---',
+  center: ':---:',
+  right: '---:',
+};
+
+/**
+ * 1個のセル(単一段落)を、パイプテーブルのセルに置ける1行の文字列にする。
+ *
+ * `MarkdownSerializerState` はセル単位で文字列を取り出す公開 API を持たない
+ * ため、段落だけを含む一時 doc を**別の `MarkdownSerializer` インスタンス**で
+ * シリアライズして結果を受け取る。`esc` は `serializeMarkdown` がプロトタイプに
+ * 張った `safeEsc` がそのまま効くので、インライン数式・画像・脚注の verbatim
+ * 免除も本文と同じ規則で働く。
+ *
+ * 最後に `escapeTableCell` で `|` を潰す。これをやらないと1セルが2セルに割れて
+ * 表の形が変わってしまう。
+ */
+function renderTableCell(cell: PMNode): string {
+  const paragraph = cell.firstChild;
+  if (!paragraph || paragraph.childCount === 0) return '';
+  const doc = schema.node('doc', null, [paragraph]);
+  const previous = insideTableCell;
+  insideTableCell = true;
+  let rendered: string;
+  try {
+    rendered = cellSerializer.serialize(doc, { tightLists: true });
+  } finally {
+    insideTableCell = previous;
+  }
+  return escapeTableCell(rendered.trim());
+}
+
+function tableRowStrings(node: PMNode): string[][] {
+  const rows: string[][] = [];
+  node.forEach((row) => {
+    const cells: string[] = [];
+    row.forEach((cell) => {
+      const { colspan, rowspan } = cell.attrs as {
+        colspan: number;
+        rowspan: number;
+      };
+      if (colspan !== 1 || rowspan !== 1) {
+        // GFM のパイプテーブルにセル結合の記法は存在しない。UI から結合を
+        // 作れないようにしてあるので到達しないはずだが、万一到達したときに
+        // 黙って壊れた表を書き出すより保存を失敗させるほうが原則に沿う
+        // (ユーザーは「保存できなかった」と気づける)。
+        throw new Error(
+          'numenumd: merged table cells cannot be written as a GFM pipe table',
+        );
       }
-    },
-    taskList: (state, node) => state.renderList(node, '  ', () => '- '),
-    taskItem: (state, node) => {
-      state.write(node.attrs.checked ? '[x] ' : '[ ] ');
+      cells.push(renderTableCell(cell));
+    });
+    rows.push(cells);
+  });
+  return rows;
+}
+
+type NodeSerializers = ConstructorParameters<typeof MarkdownSerializer>[0];
+type MarkSerializers = ConstructorParameters<typeof MarkdownSerializer>[1];
+
+const nodeSerializers: NodeSerializers = {
+  paragraph: d.nodes.paragraph!,
+  heading: d.nodes.heading!,
+  blockquote: d.nodes.blockquote!,
+  // 既定の code_block は `node.attrs.params` を読むが、本スキーマの
+  // codeBlock ノードの言語属性は `language`(tiptap CodeBlock の attrs 名)
+  // なので、フェンス情報文字列にそれを使う独自実装にする。
+  codeBlock: (state, node) => {
+    const backticks = node.textContent.match(/`{3,}/gm);
+    const fence = backticks ? backticks.sort().slice(-1)[0] + '`' : '```';
+    state.write(fence + (node.attrs.language || '') + '\n');
+    state.text(node.textContent, false);
+    state.write('\n');
+    state.write(fence);
+    state.closeBlock(node);
+  },
+  bulletList: (state, node) => state.renderList(node, '  ', () => '- '),
+  // 既定の ordered_list は `node.attrs.order` を読むが、本スキーマの
+  // orderedList ノードの開始番号属性は `start`(tiptap OrderedList の attrs 名)
+  // なのでそれを使う独自実装にする。
+  orderedList: (state, node) => {
+    const start = (node.attrs.start as number | undefined) ?? 1;
+    const maxW = String(start + node.childCount - 1).length;
+    const space = state.repeat(' ', maxW + 2);
+    state.renderList(node, space, (i) => {
+      const nStr = String(start + i);
+      return state.repeat(' ', maxW - nStr.length) + nStr + '. ';
+    });
+  },
+  // 既定の list_item は `state.renderContent(node)` するだけ。ここでは
+  // 先頭のタスクマーカーをエスケープさせないフラグ制御だけを足している
+  // (`unescapeLeadingTaskMarker` の説明を参照)。
+  listItem: (state, node) => {
+    const previous = unescapeLeadingTaskMarker;
+    unescapeLeadingTaskMarker = hasLeadingTaskMarker(node);
+    try {
       state.renderContent(node);
-    },
-    mathBlock: (state, node) => {
-      state.write('$$\n');
-      state.text(node.attrs.latex, false);
+    } finally {
+      unescapeLeadingTaskMarker = previous;
+    }
+  },
+  taskList: (state, node) => state.renderList(node, '  ', () => '- '),
+  taskItem: (state, node) => {
+    state.write(node.attrs.checked ? '[x] ' : '[ ] ');
+    state.renderContent(node);
+  },
+  mathBlock: (state, node) => {
+    state.write('$$\n');
+    state.text(node.attrs.latex, false);
+    state.ensureNewLine();
+    state.write('$$');
+    state.closeBlock(node);
+  },
+  rawBlock: (state, node) => {
+    state.text(node.attrs.content, false);
+    state.closeBlock(node);
+  },
+  /**
+   * GFM パイプテーブル。桁揃えはしない(保存フローの Prettier が整形する)。
+   *
+   * `state.write()` を1行ずつ使うのは、blockquote やリストの中に表がある
+   * ときに各行へコンテナのデリミタ(`> ` 等)を付けてもらうため。
+   */
+  table: (state, node) => {
+    // セルの描画は別 serializer を再入させるので、listItem 用のモジュール
+    // スコープのフラグが漏れないよう退避しておく。
+    const previousFlag = unescapeLeadingTaskMarker;
+    unescapeLeadingTaskMarker = false;
+    let rows: string[][];
+    try {
+      rows = tableRowStrings(node);
+    } finally {
+      unescapeLeadingTaskMarker = previousFlag;
+    }
+    if (rows.length === 0) return;
+
+    const width = Math.max(...rows.map((row) => row.length));
+    const line = (cells: string[]) => {
+      const padded = Array.from({ length: width }, (_, i) => cells[i] ?? '');
+      return `| ${padded.join(' | ')} |`;
+    };
+
+    // 揃えは列単位の情報なので、ヘッダ行のセルから読む。
+    const alignments: CellAlignment[] = [];
+    node.firstChild?.forEach((cell) => {
+      alignments.push((cell.attrs.alignment as CellAlignment) ?? null);
+    });
+    const delimiters = Array.from({ length: width }, (_, i) => {
+      const alignment = alignments[i];
+      return alignment ? ALIGNMENT_DELIMITER[alignment] : '---';
+    });
+
+    state.write(line(rows[0]!));
+    state.ensureNewLine();
+    state.write(`| ${delimiters.join(' | ')} |`);
+    for (const row of rows.slice(1)) {
       state.ensureNewLine();
-      state.write('$$');
-      state.closeBlock(node);
-    },
-    rawBlock: (state, node) => {
-      state.text(node.attrs.content, false);
-      state.closeBlock(node);
-    },
-    // frontmatter ノードは本文中では何も出力しない(serializeMarkdown 側で
-    // ドキュメントの先頭 `---` ブロックとして別途合成するため、そもそも
-    // この nodes マップに渡す doc から取り除いてある。念のためのフォールバック)。
-    frontmatter: (state, node) => state.closeBlock(node),
-    text: d.nodes.text!,
-    hardBreak: d.nodes.hard_break!,
-    horizontalRule: d.nodes.horizontal_rule!,
+      state.write(line(row));
+    }
+    state.closeBlock(node);
   },
-  {
-    bold: d.marks.strong!,
-    italic: d.marks.em!,
-    code: d.marks.code!,
-    link: d.marks.link!,
-    strike: {
-      open: '~~',
-      close: '~~',
-      mixable: true,
-      expelEnclosingWhitespace: true,
-    },
+  // 表の行/セルは `table` レンダラが自分で走査して文字列を組み立てるため、
+  // 通常これらが呼ばれることはない。呼ばれたら想定外の doc 構造なので、
+  // 黙って空文字を返さず落とす。
+  tableRow: () => {
+    throw new Error('numenumd: tableRow must be rendered by the table node');
   },
-);
+  tableHeader: () => {
+    throw new Error('numenumd: tableHeader must be rendered by the table node');
+  },
+  tableCell: () => {
+    throw new Error('numenumd: tableCell must be rendered by the table node');
+  },
+  // frontmatter ノードは本文中では何も出力しない(serializeMarkdown 側で
+  // ドキュメントの先頭 `---` ブロックとして別途合成するため、そもそも
+  // この nodes マップに渡す doc から取り除いてある。念のためのフォールバック)。
+  frontmatter: (state, node) => state.closeBlock(node),
+  text: d.nodes.text!,
+  hardBreak: d.nodes.hard_break!,
+  horizontalRule: d.nodes.horizontal_rule!,
+};
+
+const markSerializers: MarkSerializers = {
+  bold: d.marks.strong!,
+  italic: d.marks.em!,
+  code: d.marks.code!,
+  link: d.marks.link!,
+  strike: {
+    open: '~~',
+    close: '~~',
+    mixable: true,
+    expelEnclosingWhitespace: true,
+  },
+};
+
+const serializer = new MarkdownSerializer(nodeSerializers, markSerializers);
+
+/**
+ * セル1個を文字列化するための2本目の serializer(`renderTableCell` が使う)。
+ * ノード/マークの定義は本体と同一なので、セルの中でもリンク・強調・コードなど
+ * 本文とまったく同じ規則で書き出される。
+ */
+const cellSerializer = new MarkdownSerializer(nodeSerializers, markSerializers);
 
 export function serializeMarkdown(docJson: JSONContent): string {
   const content = docJson.content ?? [];
@@ -234,9 +377,10 @@ export function serializeMarkdown(docJson: JSONContent): string {
       body = serializer.serialize(bodyDoc, { tightLists: true });
     } finally {
       MarkdownSerializerState.prototype.esc = originalEsc;
-      // 例外で listItem レンダラの finally を抜けられなかった場合に備え、
-      // モジュールスコープのフラグが次回の呼び出しへ漏れないようにする。
+      // 例外で listItem / table レンダラの finally を抜けられなかった場合に
+      // 備え、モジュールスコープのフラグが次回の呼び出しへ漏れないようにする。
       unescapeLeadingTaskMarker = false;
+      insideTableCell = false;
     }
   }
 

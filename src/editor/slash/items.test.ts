@@ -14,6 +14,7 @@ describe('slash items', () => {
       'Quote',
       'Code block',
       'Math block',
+      'Table',
     ]) {
       expect(titles).toContain(t);
     }
@@ -28,6 +29,7 @@ describe('slash items', () => {
     expect(filterSlashItems('数式').map((i) => i.title)).toEqual([
       'Math block',
     ]);
+    expect(filterSlashItems('テーブル').map((i) => i.title)).toEqual(['Table']);
   });
 
   it('returns all items for empty query', () => {

@@ -3,3 +3,11 @@ dist/
 *.local
 .claude/worktrees/
 .superpowers/
+
+# ストアへ手動アップロードするときに作る zip(docs/publishing.md 参照)
+extension.zip
+
+# 掲載画像ハーネスの中間生成物。撮影後に capture.mjs が消すが、
+# 途中で失敗したときに残ることがある。
+tools/store-screenshots/out/
+tools/store-screenshots/.chrome-profile/

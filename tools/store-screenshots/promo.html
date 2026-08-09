@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 440px;
+        height: 280px;
+      }
+      body {
+        background: #2f2d29;
+        color: #ffffff;
+        font-family: -apple-system, 'Hiragino Sans', sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 14px;
+        padding: 0 34px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .name {
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+      .tag {
+        font-size: 16px;
+        line-height: 1.6;
+        color: #c9c6bf;
+      }
+      .accent {
+        color: #ff7369;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <svg width="60" height="60" viewBox="0 0 128 128">
+        <rect x="4" y="4" width="120" height="120" rx="28" fill="#3d3a35" />
+        <path
+          d="M27 90 V46 L50 74 L73 46 V90"
+          fill="none"
+          stroke="#ffffff"
+          stroke-width="12"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M97 46 V78"
+          fill="none"
+          stroke="#eb5757"
+          stroke-width="12"
+          stroke-linecap="round"
+        />
+        <path
+          d="M85 68 L97 81 L109 68"
+          fill="none"
+          stroke="#eb5757"
+          stroke-width="12"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <div class="name">numenumd</div>
+    </div>
+    <div class="tag">
+      ローカルの <span class="accent">.md</span> を Chrome で開くだけで、<br />
+      そのまま書ける WYSIWYG エディタに。
+    </div>
+  </body>
+</html>

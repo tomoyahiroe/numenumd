@@ -8,9 +8,26 @@ interface FileSystemWritableFileStream {
   close(): Promise<void>;
 }
 
+type FileSystemPermissionState = 'granted' | 'denied' | 'prompt';
+
+interface FileSystemHandlePermissionDescriptor {
+  mode?: 'read' | 'readwrite';
+}
+
 interface FileSystemFileHandle {
   getFile(): Promise<{ lastModified: number }>;
   createWritable(): Promise<FileSystemWritableFileStream>;
+  /**
+   * IndexedDB から復元したハンドルの権限を確認・要求するために使う
+   * (`handle-store.ts` / `controller.ts`)。`requestPermission` は
+   * ユーザージェスチャの中でしか通らないため、`Cmd+S` の処理から呼ぶ。
+   */
+  queryPermission(
+    descriptor?: FileSystemHandlePermissionDescriptor,
+  ): Promise<FileSystemPermissionState>;
+  requestPermission(
+    descriptor?: FileSystemHandlePermissionDescriptor,
+  ): Promise<FileSystemPermissionState>;
 }
 
 interface SaveFilePickerOptions {

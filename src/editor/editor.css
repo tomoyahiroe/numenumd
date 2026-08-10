@@ -222,6 +222,38 @@ body {
   word-break: break-word;
 }
 
+/* ヘッダの「その他」メニュー */
+.numenumd-menu {
+  position: relative;
+}
+.numenumd-menu-popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--nd-border);
+  border-radius: 6px;
+  background: var(--nd-menu-bg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.numenumd-menu-popup button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--nd-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.numenumd-menu-popup button:hover {
+  background: var(--nd-hover);
+}
+
 /* 表 */
 .numenumd-table-wrap {
   position: relative;

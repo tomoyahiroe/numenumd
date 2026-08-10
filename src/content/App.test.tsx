@@ -266,3 +266,44 @@ describe('theme toggle (UX feedback)', () => {
     expect(btn.textContent).toContain('Auto');
   });
 });
+
+// 保存先の記憶(spec「保存先の記憶」節)。
+describe('remembered save targets', () => {
+  it('gives FileController the file path as the remember key', async () => {
+    render(<App rawMarkdown={'# a'} filename="note.md" />);
+    await waitFor(() => expect(window.__numenumdEditor__).toBeTruthy());
+
+    const call = vi.mocked(FileController).mock.calls.at(-1) as unknown[];
+    // 第3引数が記憶の設定。キーは location.pathname。
+    const remember = call[2] as { path: string; store: unknown } | undefined;
+    expect(remember?.path).toBe(location.pathname);
+    expect(remember?.store).toBeTruthy();
+  });
+
+  it('clears the remembered targets from the ⋯ menu', async () => {
+    render(<App rawMarkdown={'# a'} filename="note.md" />);
+    await waitFor(() => expect(window.__numenumdEditor__).toBeTruthy());
+
+    const call = vi.mocked(FileController).mock.calls.at(-1) as unknown[];
+    const store = (call[2] as { store: { clear: () => Promise<void> } }).store;
+    const clear = vi.spyOn(store, 'clear');
+
+    await act(async () => {
+      screen.getByTestId('more-menu').click();
+    });
+    await act(async () => {
+      screen.getByTestId('forget-targets').click();
+    });
+
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('記憶した保存先を消しました')).toBeTruthy();
+    // 実行後はメニューが閉じる。
+    expect(screen.queryByTestId('forget-targets')).toBeNull();
+  });
+
+  it('does not show the menu contents until the ⋯ button is pressed', async () => {
+    render(<App rawMarkdown={'# a'} filename="note.md" />);
+    await waitFor(() => expect(window.__numenumdEditor__).toBeTruthy());
+    expect(screen.queryByTestId('forget-targets')).toBeNull();
+  });
+});

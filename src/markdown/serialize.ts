@@ -6,7 +6,7 @@ import {
 import { getSchema, type JSONContent } from '@tiptap/core';
 import { Node as PMNode } from 'prosemirror-model';
 import { buildExtensions } from '../editor/extensions';
-import type { CellAlignment } from '../editor/nodes/table';
+import { stripHardBreaks, type CellAlignment } from '../editor/nodes/table';
 import { joinFrontmatter } from './frontmatter';
 import { escapeTableCell } from './table-cells';
 import { findVerbatimSpans } from './verbatim-spans';
@@ -172,7 +172,12 @@ const ALIGNMENT_DELIMITER: Record<'left' | 'center' | 'right', string> = {
 function renderTableCell(cell: PMNode): string {
   const paragraph = cell.firstChild;
   if (!paragraph || paragraph.childCount === 0) return '';
-  const doc = schema.node('doc', null, [paragraph]);
+  // `hardBreak` が残っていると prosemirror-markdown が `\` を書き出し
+  // (ユーザーが打っていないバックスラッシュが混入する)、セル末尾の
+  // `hardBreak` に至っては無音で消える。空白に潰してから書き出す。
+  const doc = schema.node('doc', null, [
+    paragraph.copy(stripHardBreaks(paragraph.content)),
+  ]);
   const previous = insideTableCell;
   insideTableCell = true;
   let rendered: string;

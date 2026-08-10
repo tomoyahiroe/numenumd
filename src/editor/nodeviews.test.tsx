@@ -493,6 +493,58 @@ describe('table NodeView', () => {
     expect(wrap.classList.contains('is-active')).toBe(false);
   });
 
+  // README・store-listing・spec・smoke 7-5 が「Tab でセル移動、最終セルの Tab で
+  // 行追加」を約束している。実体は tiptap Table 拡張の既定キーマップなので、
+  // 拡張の更新や priority 1000 の自前キーマップに Tab が増えたときに無音で
+  // 壊れうる。約束している以上ここで固定する。
+  //
+  // `editor.commands.keyboardShortcut('Tab')` は使えない。tiptap のこの
+  // コマンドは捕捉したトランザクションの **step だけ** を再生するため、
+  // 選択しか動かさない `goToNextCell` は何も起きないまま `true` を返す。
+  // 実際の keydown をビューへ流す。
+  const pressTab = (editor: NonNullable<typeof window.__numenumdEditor__>) => {
+    act(() => {
+      fireEvent.keyDown(editor.view.dom, { key: 'Tab' });
+    });
+  };
+
+  it('moves to the next cell with Tab', async () => {
+    await mountWith(
+      tableDoc([
+        ['a', 'b'],
+        ['1', '2'],
+      ]),
+    );
+    const editor = window.__numenumdEditor__!;
+    act(() => {
+      editor.commands.setTextSelection(4); // 先頭セルのテキスト内
+    });
+    const before = editor.state.selection.from;
+    pressTab(editor);
+    expect(editor.state.selection.from).toBeGreaterThan(before);
+    expect(size()).toEqual({ rows: 2, cols: 2 }); // まだ行は増えない
+  });
+
+  it('adds a row when Tab is pressed in the last cell', async () => {
+    await mountWith(
+      tableDoc([
+        ['a', 'b'],
+        ['1', '2'],
+      ]),
+    );
+    const editor = window.__numenumdEditor__!;
+    act(() => {
+      editor.commands.setTextSelection(4);
+    });
+    // 2x2 なので3回で最終セルに着く。
+    pressTab(editor);
+    pressTab(editor);
+    pressTab(editor);
+    expect(size()).toEqual({ rows: 2, cols: 2 });
+    pressTab(editor);
+    expect(size()).toEqual({ rows: 3, cols: 2 });
+  });
+
   // GFM のセルは改行を表現できない。Shift+Enter が通ると `\` が書き出されて
   // 表が壊れるので、セル内では無効化する。
   it('does not insert a hard break inside a cell', async () => {

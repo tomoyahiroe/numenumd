@@ -95,7 +95,9 @@ npm i @tiptap/extension-table@^2.27.2 @tiptap/extension-table-row@^2.27.2 \
 - `TableCell` / `TableHeader` を `.extend({ content: 'paragraph' })` で単一段落に制限。
 - 両者に `alignment: { default: null }` 属性を追加(`'left' | 'center' | 'right' | null`)。
   `renderHTML` では `style="text-align:…"`、`parseHTML` では style から復元する。
-- `Table.configure({ resizable: false })`。`mergeCells` は UI に出さない。
+- 列幅リサイズは無効のまま(列幅は GFM に書けないので保持できない)。
+  `resizable` は `@tiptap/extension-table` の既定値がすでに `false` なので
+  `configure` は不要。`mergeCells` は UI に出さない。
 - セル内 Shift+Enter 無効化: `addKeyboardShortcuts` で表内にカーソルがあるとき
   `Shift-Enter` を握り潰す(`true` を返す)。
 
@@ -134,8 +136,10 @@ npm i @tiptap/extension-table@^2.27.2 @tiptap/extension-table-row@^2.27.2 \
 
 `tableCell` の content は `paragraph` なので、markdown-it の `th_open, inline,
 th_close` をそのまま流すと `createAndFill` が失敗してセルが**黙って消える**。
-`inline` core rule の前に、`th_open` / `td_open` の直後と `*_close` の直前へ
-`paragraph_open` / `paragraph_close` トークンを挿す core rule を足す。
+`th_open` / `td_open` の直後と `*_close` の直前へ `paragraph_open` /
+`paragraph_close` トークンを挿す core rule を足す。挿すのはブロックトークン
+だけなので、`inline` ルールの前でも後でも結果は変わらない(実装では
+`md.core.ruler.push` で最後に登録している)。
 
 **Step 3 — トークンマップ**
 

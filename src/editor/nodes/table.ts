@@ -3,6 +3,8 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
+import { Fragment, Slice, type Node as PMNode } from 'prosemirror-model';
+import { Plugin } from 'prosemirror-state';
 import { CellSelection } from 'prosemirror-tables';
 import { tableNodeView } from './table-view';
 
@@ -61,9 +63,112 @@ const TableHeaderStrict = TableHeader.extend({
   },
 });
 
+/**
+ * 貼り付けられた表を、GFM のパイプテーブルとして必ず書き出せる形に均す。
+ *
+ * tiptap の `TableCell` / `TableHeader` は `parseHTML` で `colspan` / `rowspan`
+ * を読むため、ウェブページの結合セル入り `<table>` を貼るとそのまま
+ * ドキュメントに入る。GFM のパイプテーブルは結合を表現できず、
+ * `serialize.ts` は安全側に倒して例外を投げるので、**貼った瞬間から文書全体が
+ * 保存できなくなる**(独立レビューでの指摘。「UI から作れないので到達しない」
+ * という当初の想定が誤りだった)。
+ *
+ * ここで結合をほどいておけば、シリアライザ側の例外は本当に到達不能になる。
+ * - `colspan` は「内容を持つセル + 空セル」に展開する(内容は失わない)。
+ * - `rowspan` は 1 に落とす。行が短くなった分は空セルで埋め、表を矩形に保つ。
+ * - `colwidth` は GFM に書けないので落とす。
+ * - セル内の `hardBreak`(`<br>`)は空白に潰す。残すと `\` が書き出されるうえ、
+ *   セル末尾では無音で消える。
+ */
+function flattenTable(table: PMNode): PMNode {
+  const rows: PMNode[][] = [];
+
+  table.forEach((row) => {
+    const cells: PMNode[] = [];
+    row.forEach((cell) => {
+      const colspan = Math.max(1, Number(cell.attrs.colspan) || 1);
+      const attrs = { ...cell.attrs, colspan: 1, rowspan: 1, colwidth: null };
+      cells.push(cell.type.create(attrs, stripHardBreaks(cell.content)));
+      for (let i = 1; i < colspan; i++) {
+        const filler = cell.type.createAndFill(attrs);
+        if (filler) cells.push(filler);
+      }
+    });
+    rows.push(cells);
+  });
+
+  const width = rows.reduce((max, cells) => Math.max(max, cells.length), 0);
+  const rebuilt: PMNode[] = [];
+  rows.forEach((cells, index) => {
+    const row = table.child(index);
+    const cellType = cells[0]?.type ?? row.type.schema.nodes.tableCell!;
+    while (cells.length < width) {
+      const filler = cellType.createAndFill();
+      if (!filler) break;
+      cells.push(filler);
+    }
+    rebuilt.push(row.type.create(row.attrs, cells));
+  });
+
+  return table.type.create(table.attrs, rebuilt);
+}
+
+/**
+ * `hardBreak` を空白テキストへ置き換える(セルの中では改行を表現できない)。
+ *
+ * ペースト経路(この拡張の `transformPasted`)と、書き出し直前
+ * (`serialize.ts` の `renderTableCell`)の両方から呼ぶ。前者だけだと
+ * ペースト以外の経路で入り込んだ `hardBreak` が `\` として書き出され、
+ * 後者だけだと画面には改行が見えているのに保存すると空白に変わる、という
+ * 見た目と保存内容の食い違いが起きる。
+ */
+export function stripHardBreaks(fragment: Fragment): Fragment {
+  const out: PMNode[] = [];
+  fragment.forEach((node) => {
+    if (node.type.name === 'hardBreak') {
+      out.push(node.type.schema.text(' '));
+    } else if (node.content.size > 0) {
+      out.push(node.copy(stripHardBreaks(node.content)));
+    } else {
+      out.push(node);
+    }
+  });
+  return Fragment.fromArray(out);
+}
+
+/** フラグメントを再帰的に走査し、`table` ノードだけ差し替える。 */
+function flattenTablesIn(fragment: Fragment): Fragment {
+  const out: PMNode[] = [];
+  fragment.forEach((node) => {
+    if (node.type.name === 'table') {
+      out.push(flattenTable(node));
+    } else if (node.content.size > 0) {
+      out.push(node.copy(flattenTablesIn(node.content)));
+    } else {
+      out.push(node);
+    }
+  });
+  return Fragment.fromArray(out);
+}
+
 const TableWithView = Table.extend({
   addNodeView() {
     return tableNodeView;
+  },
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        props: {
+          transformPasted: (slice) =>
+            new Slice(
+              flattenTablesIn(slice.content),
+              slice.openStart,
+              slice.openEnd,
+            ),
+        },
+      }),
+    ];
   },
 });
 

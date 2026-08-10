@@ -35,6 +35,21 @@ describe('serialize', () => {
   });
 });
 
+/**
+ * すでに整形済みで、1回通しても1バイトも変わらないはずのフィクスチャ。
+ *
+ * 冪等性(`twice === once`)だけでは往復の欠落を捕まえられない。独立レビューで
+ * 実証されたとおり、シリアライザが揃え記法を捨てても超過セルを消しても
+ * 「2回目が1回目と同じ」は成立してしまうため、テストは通ってしまう。
+ * 整形済みのフィクスチャについては `once === src` まで見て、内容が変わって
+ * いないことを固定する。
+ *
+ * ここに載っていないフィクスチャ(`basic` / `edge` / `empty` /
+ * `images-footnotes`)は、わざと未整形の記述を含めて「整形されること」自体を
+ * 見る目的なので、冪等性のみで据え置く。
+ */
+const BYTE_STABLE_FIXTURES = new Set(['blocks.md', 'math.md', 'table.md']);
+
 describe('mdToMd (golden + idempotency)', () => {
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.md'))) {
     it(`round-trips ${f} losslessly after one format`, async () => {
@@ -42,6 +57,9 @@ describe('mdToMd (golden + idempotency)', () => {
       const once = await mdToMd(src);
       const twice = await mdToMd(once);
       expect(twice).toBe(once); // 冪等: 2回保存しても差分ゼロ
+      if (BYTE_STABLE_FIXTURES.has(f)) {
+        expect(once).toBe(src); // 整形済みなら1回目で既に無変化
+      }
     });
   }
 

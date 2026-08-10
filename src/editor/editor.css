@@ -243,12 +243,14 @@ body {
   width: 100%;
   margin: 0;
 }
+/* `table-layout: fixed` の下ではセルの min-width は列幅計算に効かない。
+   列が潰れないための下限は、列数から算出した min-width を表そのものへ
+   NodeView が付ける(table-view.ts の MIN_COLUMN_WIDTH_PX)。 */
 .numenumd-editor th,
 .numenumd-editor td {
   border: 1px solid var(--nd-border);
   padding: 6px 10px;
   vertical-align: top;
-  min-width: 3em;
 }
 .numenumd-editor th {
   background: var(--nd-pre-bg);

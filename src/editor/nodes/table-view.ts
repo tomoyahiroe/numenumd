@@ -19,6 +19,18 @@ import { CellSelection, TableMap } from 'prosemirror-tables';
 /** 隣り合うグリップの間に空ける余白(px)。無いと1本の帯に見えて掴み分けられない。 */
 const GRIP_GAP = 2;
 
+/**
+ * 1列あたりの最小幅(px)。表は `table-layout: fixed; width: 100%` なので、
+ * 何もしないと列数がいくら増えても container 幅に収まるまで潰れ、20列を超えた
+ * あたりで判読不能になる(`overflow-x: auto` を置いても、はみ出すものが
+ * 発生しないのでスクロールもしない)。
+ *
+ * 列数から下限幅を出して表へ `min-width` として与えることで、狭いときは
+ * 横スクロールが効き、広いときは従来どおり幅いっぱいに広がる。`fixed`
+ * レイアウトではセル側の `min-width` が無視されるため、表そのものに付ける。
+ */
+const MIN_COLUMN_WIDTH_PX = 120;
+
 function measurable(el: HTMLElement): { offset: number; size: number } {
   // jsdom では offsetLeft / offsetWidth が常に 0 になる。座標合わせは
   // 表示上の都合でしかないので、測れない環境では 0 のまま置く(グリップ自体は
@@ -163,6 +175,8 @@ export const tableNodeView: NodeViewRenderer = ({ editor, node, getPos }) => {
     sync(colGrips, map.width, 'column', selectColumn);
     sync(rowGrips, map.height, 'row', selectRow);
 
+    table.style.minWidth = `${map.width * MIN_COLUMN_WIDTH_PX}px`;
+
     const firstRow = table.rows[0];
     if (firstRow) {
       Array.from(colGrips.children).forEach((grip, i) => {
@@ -190,9 +204,23 @@ export const tableNodeView: NodeViewRenderer = ({ editor, node, getPos }) => {
     dom.classList.toggle('is-active', inside);
   };
 
+  /**
+   * この hook が拾う必要があるのは**選択の変化だけ**。ノードの変化は
+   * `update()` が拾い、そこで `layoutGrips()` を呼んでいる。
+   *
+   * `transaction` は文書のどこを打鍵しても全ての表のリスナーに飛んでくるので、
+   * ここで無条件に `TableMap.get` とグリップ再構築・座標測定まで走らせると、
+   * 表がいくつかある文書でタイプするたび全表分のレイアウト計算が走る。
+   * 選択が動いていなければ何もしない。
+   */
+  let lastFrom = -1;
+  let lastTo = -1;
   const onTransaction = () => {
+    const { from, to } = editor.state.selection;
+    if (from === lastFrom && to === lastTo) return;
+    lastFrom = from;
+    lastTo = to;
     syncActive();
-    layoutGrips();
   };
 
   editor.on('transaction', onTransaction);

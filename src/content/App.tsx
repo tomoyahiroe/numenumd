@@ -23,7 +23,9 @@ function messageFor(e: unknown): string {
 export function App({ rawMarkdown, filename }: Props) {
   const initialDoc = useMemo(() => parseMarkdown(rawMarkdown), [rawMarkdown]);
   const router = useMemo(() => new KeyRouter(), []);
-  // 保存先の記憶(このアプリで唯一の永続状態。spec「保存先の記憶」節)。
+  // 保存先の記憶(numenumd 自身が読み書きする唯一の永続データ。
+  // spec「保存先の記憶」節。ブラウザ側にはピッカーの最終ディレクトリや
+  // File System Access の許可も残るが、そちらは numenumd からは読めない)。
   // キーはファイルのパス。IndexedDB が使えない環境では記憶しないストアに
   // フォールバックし、従来どおり保存のたびにピッカーが出る。
   const handleStore = useMemo(() => createHandleStore(), []);
@@ -176,7 +178,8 @@ export function App({ rawMarkdown, filename }: Props) {
   // テーマ: 既定は OS 設定に追従(auto)。トグルで auto → light → dark を循環。
   // スラッシュメニュー(tippy)が document.body 直下に生えるため、テーマの
   // data 属性はアプリコンテナではなく documentElement に刻む。
-  // 永続化はしない(spec の「永続状態を持たない」原則。タブごとにリセット)。
+  // テーマは永続化しない。保存先の記憶とは違い、選び直すコストがほぼ無いため
+  // 例外を増やす理由が無い(spec「保存先の記憶」節を参照)。タブごとにリセット。
   const [themePref, setThemePref] = useState<ThemePreference>('auto');
   useEffect(() => {
     const mql = window.matchMedia?.('(prefers-color-scheme: dark)');

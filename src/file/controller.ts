@@ -17,20 +17,24 @@ export type RememberOptions = {
  *   `save()`); subsequent saves reuse the in-memory handle.
  * - When `remember` is supplied, the handle and the last-saved mtime are also
  *   persisted (see `handle-store.ts`), so a reloaded tab can save without
- *   asking the user to pick the file again. This is the project's only
- *   persistent state — see the spec's 「保存先の記憶」 section. Remembering is
- *   strictly best-effort: any failure falls back to the picker, which is the
- *   pre-existing behaviour.
+ *   asking the user to pick the file again. That store is the only persistent
+ *   data numenumd itself reads or writes — the browser separately retains the
+ *   picker's last-used directory and the File System Access grant, neither of
+ *   which numenumd can read. See the spec's 「保存先の記憶」 section.
+ *   Remembering is strictly best-effort: any failure falls back to the picker,
+ *   which is the pre-existing behaviour.
  * - Before overwriting, `save()` compares the on-disk `lastModified` against
  *   the mtime recorded after our last successful write. If the file changed
  *   externally in the meantime, it refuses to write and returns `'conflict'`
  *   so the caller can prompt the user; `confirmOverwrite()` performs the
  *   forced write once the user accepts losing the external change.
  * - If the OS/browser revokes write permission (`NotAllowedError`), the
- *   handle is discarded so the *next* `save()` call re-prompts the picker
- *   instead of silently failing forever. The failed attempt itself reports
- *   `'cancelled'` and writes nothing — the caller's in-memory content is
- *   never touched, so no data is lost.
+ *   in-memory handle is discarded so the *next* `save()` call starts over
+ *   instead of silently failing forever. With `remember` configured that
+ *   restart goes through the store first — it re-requests permission on the
+ *   remembered handle and only falls back to the picker if that is refused.
+ *   The failed attempt itself reports `'cancelled'` and writes nothing — the
+ *   caller's in-memory content is never touched, so no data is lost.
  */
 export class FileController {
   private handle: FileSystemFileHandle | null = null;

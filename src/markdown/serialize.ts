@@ -199,10 +199,20 @@ function tableRowStrings(node: PMNode): string[][] {
         rowspan: number;
       };
       if (colspan !== 1 || rowspan !== 1) {
-        // GFM のパイプテーブルにセル結合の記法は存在しない。UI から結合を
-        // 作れないようにしてあるので到達しないはずだが、万一到達したときに
-        // 黙って壊れた表を書き出すより保存を失敗させるほうが原則に沿う
-        // (ユーザーは「保存できなかった」と気づける)。
+        // GFM のパイプテーブルにセル結合の記法は存在しない。
+        //
+        // 結合セルがここへ届く経路は2つあり、両方とも塞いである:
+        // 1. 編集操作 — `mergeCells` を UI に出していない。
+        // 2. ペースト/ドロップ — `editor/nodes/table.ts` の `transformPasted`
+        //    (`flattenTable`)が colspan/rowspan をほどいてから doc に入れる。
+        //
+        // 2 を塞ぐ前は、ウェブページの結合セル入り表を貼るだけでここに到達し、
+        // **その文書が以後まったく保存できなくなっていた**(独立レビューでの
+        // 指摘。当時のコメントは 1 だけを根拠に「到達しないはず」と書いており、
+        // それが誤りだった)。同じ誤りを繰り返さないよう経路を明示しておく。
+        //
+        // それでも throw を残すのは、黙って壊れた表を書き出すより保存を
+        // 失敗させるほうが原則に沿うため(ユーザーが気づける)。
         throw new Error(
           'numenumd: merged table cells cannot be written as a GFM pipe table',
         );

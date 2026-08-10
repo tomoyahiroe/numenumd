@@ -10,6 +10,16 @@ import { tableNodeView } from './table-view';
 
 export type CellAlignment = 'left' | 'center' | 'right' | null;
 
+/**
+ * 貼り付けられた `colspan` を展開するときの上限列数。
+ *
+ * 実在の HTML には「全幅」のつもりで `colspan="99"` と書かれた表があり、
+ * 悪意が無くても大きな値は飛んでくる。GFM の表として現実的に扱える列数を
+ * 大きく超えたところで頭打ちにする(超過分は単に展開しないだけで、セルの
+ * 内容は先頭セルに残るので情報は失われない)。
+ */
+const MAX_COLSPAN_EXPANSION = 64;
+
 function readAlignment(element: HTMLElement): CellAlignment {
   const align = element.style.textAlign;
   return align === 'left' || align === 'center' || align === 'right'
@@ -86,7 +96,15 @@ function flattenTable(table: PMNode): PMNode {
   table.forEach((row) => {
     const cells: PMNode[] = [];
     row.forEach((cell) => {
-      const colspan = Math.max(1, Number(cell.attrs.colspan) || 1);
+      // クリップボードの中身は信用できない。tiptap は colspan を parseInt する
+      // だけでクランプしないため、`<td colspan="200000">` を貼られると
+      // 20万セルを実体化し(実測: 40万セル/179ms)、他の行も同じ幅まで
+      // パディングされてタブが固まる。属性を展開する方式にした以上、上限は
+      // こちら側で持つ必要がある。
+      const colspan = Math.min(
+        MAX_COLSPAN_EXPANSION,
+        Math.max(1, Number(cell.attrs.colspan) || 1),
+      );
       const attrs = { ...cell.attrs, colspan: 1, rowspan: 1, colwidth: null };
       cells.push(cell.type.create(attrs, stripHardBreaks(cell.content)));
       for (let i = 1; i < colspan; i++) {

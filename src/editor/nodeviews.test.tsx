@@ -468,6 +468,49 @@ describe('table NodeView', () => {
     expect(size()).toEqual({ rows: 2, cols: 2 });
   });
 
+  // 独立レビュー F6: `layoutGrips()` の呼び元は本 PR で `update()` だけに
+  // なったが、それを守るテストが無く、`table.style.minWidth` の行も含めて
+  // 消しても 224/224 通っていた。jsdom はピクセルを測れないものの、
+  // グリップの「個数」と minWidth の「計算値」は観測できる。
+  it('keeps grips and the min-width in step with the column/row count', async () => {
+    const { container } = await mountWith(
+      tableDoc([
+        ['a', 'b', 'c'],
+        ['1', '2', '3'],
+      ]),
+    );
+    const editor = window.__numenumdEditor__!;
+    const table = container.querySelector('table')!;
+    const colGrips = () =>
+      container.querySelectorAll(
+        '.numenumd-table-grips-col .numenumd-table-grip',
+      ).length;
+    const rowGrips = () =>
+      container.querySelectorAll(
+        '.numenumd-table-grips-row .numenumd-table-grip',
+      ).length;
+
+    expect(colGrips()).toBe(3);
+    expect(rowGrips()).toBe(2);
+    const initialMinWidth = table.style.minWidth;
+    expect(initialMinWidth).not.toBe('');
+
+    act(() => {
+      editor.commands.setTextSelection(3);
+      editor.commands.deleteColumn();
+    });
+    expect(colGrips()).toBe(2);
+    // 列が減れば下限幅も比例して縮む。
+    expect(parseInt(table.style.minWidth, 10)).toBe(
+      (parseInt(initialMinWidth, 10) / 3) * 2,
+    );
+
+    act(() => {
+      editor.commands.deleteRow();
+    });
+    expect(rowGrips()).toBe(1);
+  });
+
   it('marks the wrapper active only while the cursor sits inside the table', async () => {
     const { container } = await mountWith({
       type: 'doc',

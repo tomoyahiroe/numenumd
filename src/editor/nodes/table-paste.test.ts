@@ -102,6 +102,102 @@ describe('pasting a table with merged cells', () => {
     expect(out).not.toContain('\\');
   });
 
+  // 独立レビュー F1: tiptap は colspan を parseInt するだけでクランプしない。
+  // 属性を残す(= 保存時に例外)方式から、セルを実体化する方式に変えた以上、
+  // 上限はこちら側で持つ必要がある。クランプが無いと
+  // `colspan="200000"` で40万セルを生成してタブが固まる(実測)。
+  //
+  // テストで使う値を 200000 ではなく 200 にしているのは、失敗の仕方の問題。
+  // 200000 のままだとクランプを外したときテストが「落ちる」のではなく
+  // 「返ってこなくなる」(実際にこの検証中、ジョブがタイムアウトするまで
+  // 戻らなかった)。CI ではそれが最も分かりにくい壊れ方になる。
+  // 200 ならクランプの有無にかかわらず一瞬で終わり、外したときは
+  // `expected 200 to be less than or equal to 64` と明示的に落ちる。
+  it('clamps an absurd colspan instead of materialising the cells', () => {
+    const editor = makeEditor();
+    const doc = pasteHtml(
+      editor,
+      '<table><tr><td colspan="200">x</td></tr><tr><td>a</td></tr></table>',
+    );
+    const rows = cells(doc);
+    expect(rows?.[0]?.length).toBeLessThanOrEqual(64);
+    // 内容は先頭セルに残る(クランプは情報を落とさない)。
+    expect(rows?.[0]?.[0]?.text).toBe('x');
+    expect(rows?.[1]?.[0]?.text).toBe('a');
+    // 全ての行が同じ幅に揃っていること。
+    expect(rows?.every((row) => row?.length === rows[0]?.length)).toBe(true);
+  });
+
+  // 独立レビュー F3: `<br>` の修正はペースト側と書き出し側の二重で守られて
+  // いるため、既存のテストはどちらか片方を消しても通ってしまっていた。
+  // 両側を個別に固定する。
+  it('removes the hardBreak from the document at paste time', () => {
+    const editor = makeEditor();
+    const doc = pasteHtml(
+      editor,
+      '<table><tr><th>h</th></tr><tr><td>a<br>b</td></tr></table>',
+    );
+    const types: string[] = [];
+    const walk = (nodes: NonNullable<typeof doc.content>) => {
+      for (const n of nodes) {
+        types.push(n.type ?? '');
+        if (n.content) walk(n.content);
+      }
+    };
+    walk(doc.content ?? []);
+    expect(types).not.toContain('hardBreak');
+  });
+
+  it('folds a hardBreak that reached a cell without going through paste', () => {
+    const editor = makeEditor();
+    // ペーストを経由せずセルに hardBreak を入れる(書き出し側の防御だけを見る)。
+    editor.commands.setContent({
+      type: 'doc',
+      content: [
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableHeader',
+                  content: [
+                    {
+                      type: 'paragraph',
+                      content: [{ type: 'text', text: 'h' }],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  content: [
+                    {
+                      type: 'paragraph',
+                      content: [
+                        { type: 'text', text: 'a' },
+                        { type: 'hardBreak' },
+                        { type: 'text', text: 'b' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const out = serializeMarkdown(editor.getJSON());
+    expect(out).toContain('| a b |');
+    expect(out).not.toContain('\\');
+  });
+
   it('does not disturb a plain table without merged cells', () => {
     const editor = makeEditor();
     const doc = pasteHtml(

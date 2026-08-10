@@ -43,12 +43,36 @@ describe('serialize', () => {
  * 「2回目が1回目と同じ」は成立してしまうため、テストは通ってしまう。
  * 整形済みのフィクスチャについては `once === src` まで見て、内容が変わって
  * いないことを固定する。
- *
- * ここに載っていないフィクスチャ(`basic` / `edge` / `empty` /
- * `images-footnotes`)は、わざと未整形の記述を含めて「整形されること」自体を
- * 見る目的なので、冪等性のみで据え置く。
  */
 const BYTE_STABLE_FIXTURES = new Set(['blocks.md', 'math.md', 'table.md']);
+
+/**
+ * 1回通すと変わるが、**変わり方が分かっている**フィクスチャ。期待値を式で
+ * 書いて固定する。
+ *
+ * 当初これらは「わざと未整形の記述を含むから」という理由でまとめて除外して
+ * いたが、独立レビューでその理由が事実に反すると指摘された。実際には
+ * `empty.md` は0バイトのファイルで「未整形の記述」など無く、
+ * `images-footnotes.md` に至っては**1行を除いて完全にバイト一致**していた。
+ * 理由を偽ったまま除外することは、下記の既知の不整合を隠すことでもあった。
+ *
+ * `basic.md` / `edge.md` だけは本当に「整形されること」自体が目的なので、
+ * 期待値を書かず冪等性のみに留める。
+ */
+const KNOWN_DEVIATIONS: Record<string, (src: string) => string> = {
+  // 空ファイルには本文が無いので、シリアライズ結果は改行1つになる。
+  'empty.md': () => '\n',
+  // 既知の不整合: `safeEsc` は地の文の `[` `]` を常時エスケープするため、
+  // 散文中の `array[0]` が `array\[0\]` に化ける。フィクスチャ自身の文が
+  // 「stay as they are」と言っているのに、そうなっていない。
+  //
+  // 直すには「リンクになる形の `[` だけをエスケープする」判定が要り、
+  // 誤ると地の文が意図しないリンクに化ける(往復破壊)。リスクに見合わないと
+  // 判断して現状維持とし、README の既知の制限に明記した。
+  // ここで期待値として書き下しておくことで、**これ以外の**差分が出たら
+  // 落ちるようにしておく(除外して見逃すのではなく、ズレを1点に固定する)。
+  'images-footnotes.md': (src) => src.replace('array[0]', 'array\\[0\\]'),
+};
 
 describe('mdToMd (golden + idempotency)', () => {
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.md'))) {
@@ -59,6 +83,10 @@ describe('mdToMd (golden + idempotency)', () => {
       expect(twice).toBe(once); // 冪等: 2回保存しても差分ゼロ
       if (BYTE_STABLE_FIXTURES.has(f)) {
         expect(once).toBe(src); // 整形済みなら1回目で既に無変化
+      }
+      const deviation = KNOWN_DEVIATIONS[f];
+      if (deviation) {
+        expect(once).toBe(deviation(src)); // 既知の差分ちょうどに一致すること
       }
     });
   }

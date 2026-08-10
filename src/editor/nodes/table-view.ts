@@ -205,13 +205,17 @@ export const tableNodeView: NodeViewRenderer = ({ editor, node, getPos }) => {
   };
 
   /**
-   * この hook が拾う必要があるのは**選択の変化だけ**。ノードの変化は
-   * `update()` が拾い、そこで `layoutGrips()` を呼んでいる。
+   * `transaction` から拾うのは選択の変化だけにする。
    *
-   * `transaction` は文書のどこを打鍵しても全ての表のリスナーに飛んでくるので、
-   * ここで無条件に `TableMap.get` とグリップ再構築・座標測定まで走らせると、
-   * 表がいくつかある文書でタイプするたび全表分のレイアウト計算が走る。
-   * 選択が動いていなければ何もしない。
+   * このイベントは文書のどこを打鍵しても全ての表のリスナーへ飛んでくるので、
+   * 無条件に `TableMap.get` とグリップ再構築・座標測定まで走らせると、表が
+   * いくつかある文書でタイプするたび全表分のレイアウト計算が走ってしまう。
+   * ノードの変化は `update()` が拾い、そこで `layoutGrips()` を呼んでいる。
+   *
+   * ただし**ノードが変わらなくても幾何は変わる**(ウィンドウのリサイズ、
+   * ズーム、Web フォントの遅延読み込み)。以前は全トランザクションで測り直して
+   * いたため、リサイズ後に何か打てば偶然直っていた。その回復経路が無くなった
+   * 分は下の `ResizeObserver` で明示的に補う。
    */
   let lastFrom = -1;
   let lastTo = -1;
@@ -224,6 +228,16 @@ export const tableNodeView: NodeViewRenderer = ({ editor, node, getPos }) => {
   };
 
   editor.on('transaction', onTransaction);
+
+  // 幅が変わればセルの座標も変わる。jsdom には ResizeObserver が無いので
+  // 存在確認してから使う(テスト環境ではグリップの座標合わせ自体が
+  // 検証対象外 — `measurable()` の説明を参照)。
+  const resizeObserver =
+    typeof globalThis.ResizeObserver === 'function'
+      ? new globalThis.ResizeObserver(() => layoutGrips())
+      : null;
+  resizeObserver?.observe(scroll);
+
   layoutGrips();
   syncActive();
 
@@ -249,6 +263,7 @@ export const tableNodeView: NodeViewRenderer = ({ editor, node, getPos }) => {
       ),
     destroy: () => {
       editor.off('transaction', onTransaction);
+      resizeObserver?.disconnect();
     },
   };
 };

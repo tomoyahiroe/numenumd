@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 
-import { describe, it, expect, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  afterEach,
+  beforeAll,
+  afterAll,
+  vi,
+} from 'vitest';
 import { Editor } from '@tiptap/core';
 import { DOMParser as PMDOMParser } from 'prosemirror-model';
 import { buildExtensions } from '../extensions';
@@ -40,6 +48,83 @@ const cells = (doc: ReturnType<Editor['getJSON']>) =>
           cell.content?.[0]?.content?.map((t) => t.text ?? '').join('') ?? '',
       })),
     );
+
+/**
+ * jsdom は `ClipboardEvent` / `DataTransfer` を持たないが、`view.pasteHTML` は
+ * それらを使う。**本物のペースト経路**(`parseFromClipboard`)を通すことが
+ * このマトリクスの要点なので、`parseSlice` で代用せず最小限を用意する。
+ */
+class FakeDataTransfer {
+  private data: Record<string, string> = {};
+  types: string[] = [];
+  setData(type: string, value: string) {
+    this.data[type] = value;
+    this.types = Object.keys(this.data);
+  }
+  getData(type: string) {
+    return this.data[type] ?? '';
+  }
+  get files() {
+    return [] as unknown as FileList;
+  }
+}
+class FakeClipboardEvent extends Event {
+  clipboardData: FakeDataTransfer;
+  constructor(type: string, init?: { clipboardData?: FakeDataTransfer }) {
+    super(type, { bubbles: true, cancelable: true });
+    this.clipboardData = init?.clipboardData ?? new FakeDataTransfer();
+  }
+}
+beforeAll(() => {
+  vi.stubGlobal('ClipboardEvent', FakeClipboardEvent);
+  vi.stubGlobal('DataTransfer', FakeDataTransfer);
+});
+afterAll(() => vi.unstubAllGlobals());
+
+// 独立レビュー Blocker 1: `transformPasted` が `table` ノードしか見ていな
+// かったため、クリップボード HTML が表の内部タグで始まる形(ウェブページの
+// 表を部分選択してコピーすると普通に起きる)では結合セルが素通しし、貼った
+// 文書が保存不能になったままだった。
+//
+// 「経路は2つ、両方塞いだ」というコメントでの宣言は3周連続で数え漏れを
+// 起こしたので、宣言する代わりに**経路そのものをマトリクスとして固定する**。
+// 新しい経路が増えたらここに足す。
+describe('paste paths that can carry merged cells', () => {
+  const CASES: Array<[string, string]> = [
+    ['<table> wrapper', '<table><tr><td colspan="2">x</td></tr></table>'],
+    ['bare <tr>, single row', '<tr><td colspan="2">x</td></tr>'],
+    ['<thead> only', '<thead><tr><th colspan="2">h</th></tr></thead>'],
+    ['<tbody> only', '<tbody><tr><td colspan="2">x</td></tr></tbody>'],
+    ['single <td>', '<td colspan="2">a</td>'],
+    ['single <th>', '<th colspan="3">a</th>'],
+    [
+      'meta prefix + bare <tr>',
+      '<meta charset=\'utf-8\'><tr><td colspan="2">x</td></tr>',
+    ],
+    [
+      'bare <tr>, two rows',
+      '<tr><td colspan="2">x</td></tr><tr><td>y</td></tr>',
+    ],
+  ];
+
+  for (const [label, html] of CASES) {
+    it(`leaves the document savable after pasting ${label}`, () => {
+      const editor = makeEditor();
+      editor.view.pasteHTML(html);
+      expect(() => serializeMarkdown(editor.getJSON())).not.toThrow();
+    });
+  }
+
+  it('keeps the pasted content through every one of those paths', () => {
+    for (const [label, html] of CASES) {
+      const editor = makeEditor();
+      editor.view.pasteHTML(html);
+      const out = serializeMarkdown(editor.getJSON());
+      // 内容(x / h / a / y)のいずれかは必ず残る。
+      expect(out, label).toMatch(/[xhay]/);
+    }
+  });
+});
 
 // 独立レビューの指摘(高): tiptap の TableCell/TableHeader は parseHTML で
 // colspan/rowspan を読むため、ウェブページの結合セル入り表を貼るとそのまま
@@ -102,30 +187,57 @@ describe('pasting a table with merged cells', () => {
     expect(out).not.toContain('\\');
   });
 
-  // 独立レビュー F1: tiptap は colspan を parseInt するだけでクランプしない。
-  // 属性を残す(= 保存時に例外)方式から、セルを実体化する方式に変えた以上、
-  // 上限はこちら側で持つ必要がある。クランプが無いと
-  // `colspan="200000"` で40万セルを生成してタブが固まる(実測)。
+  // 独立レビュー Blocker 2: 当初のクランプは**セル単位**だったため、
+  // `colspan="1000"` のセルを並べるだけで行幅が 64 の倍数に膨らみ、
+  // 「上限列数」を名乗りながら列数をまったく抑えられていなかった
+  // (5KB 程度の HTML で Node が OOM するところまで再現された)。
+  // 1セル形状だけを見るテストではこれを捕まえられないので、
+  // **複数セル**と**総量**の両方を固定する。
   //
-  // テストで使う値を 200000 ではなく 200 にしているのは、失敗の仕方の問題。
-  // 200000 のままだとクランプを外したときテストが「落ちる」のではなく
-  // 「返ってこなくなる」(実際にこの検証中、ジョブがタイムアウトするまで
-  // 戻らなかった)。CI ではそれが最も分かりにくい壊れ方になる。
-  // 200 ならクランプの有無にかかわらず一瞬で終わり、外したときは
-  // `expected 200 to be less than or equal to 64` と明示的に落ちる。
-  it('clamps an absurd colspan instead of materialising the cells', () => {
-    const editor = makeEditor();
-    const doc = pasteHtml(
+  // 値を控えめ(colspan=200, 20セル)にしているのは失敗の仕方の問題。
+  // 上限が効いていないときテストが「落ちる」のではなく「返ってこなくなる」と、
+  // CI ではタイムアウトという最も分かりにくい壊れ方になる。
+  const pasteWide = (editor: Editor, cells: number, colspan: number) =>
+    pasteHtml(
       editor,
-      '<table><tr><td colspan="200">x</td></tr><tr><td>a</td></tr></table>',
+      `<table><tr>${`<td colspan="${colspan}">x</td>`.repeat(cells)}</tr><tr><td>a</td></tr></table>`,
     );
-    const rows = cells(doc);
-    expect(rows?.[0]?.length).toBeLessThanOrEqual(64);
+
+  const shape = (doc: ReturnType<Editor['getJSON']>) => {
+    const rows = doc.content?.find((n) => n.type === 'table')?.content ?? [];
+    return {
+      maxRowWidth: rows.reduce(
+        (m, r) => Math.max(m, r.content?.length ?? 0),
+        0,
+      ),
+      totalCells: rows.reduce((sum, r) => sum + (r.content?.length ?? 0), 0),
+    };
+  };
+
+  it('caps a single absurd colspan at the per-row column limit', () => {
+    const editor = makeEditor();
+    const doc = pasteWide(editor, 1, 200);
+    expect(shape(doc).maxRowWidth).toBeLessThanOrEqual(64);
     // 内容は先頭セルに残る(クランプは情報を落とさない)。
-    expect(rows?.[0]?.[0]?.text).toBe('x');
-    expect(rows?.[1]?.[0]?.text).toBe('a');
-    // 全ての行が同じ幅に揃っていること。
-    expect(rows?.every((row) => row?.length === rows[0]?.length)).toBe(true);
+    const first = doc.content?.find((n) => n.type === 'table')?.content?.[0];
+    expect(first?.content?.[0]?.content?.[0]?.content?.[0]?.text).toBe('x');
+  });
+
+  it('caps the row width no matter how many wide cells are in the row', () => {
+    const editor = makeEditor();
+    const { maxRowWidth, totalCells } = shape(pasteWide(editor, 20, 200));
+    // セル単位のクランプだと 20 x 64 = 1280 列になる。行単位でなければ通らない。
+    expect(maxRowWidth).toBeLessThanOrEqual(64);
+    expect(totalCells).toBeLessThanOrEqual(4096);
+  });
+
+  it('keeps every pasted cell reachable even when the row is capped', () => {
+    const editor = makeEditor();
+    const doc = pasteWide(editor, 20, 200);
+    const out = serializeMarkdown(doc);
+    // 20個の `x` すべては残らない(列上限があるため)が、保存はできる。
+    expect(() => serializeMarkdown(doc)).not.toThrow();
+    expect(out).toContain('x');
   });
 
   // 独立レビュー F3: `<br>` の修正はペースト側と書き出し側の二重で守られて

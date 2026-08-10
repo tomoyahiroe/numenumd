@@ -11,14 +11,33 @@ import { tableNodeView } from './table-view';
 export type CellAlignment = 'left' | 'center' | 'right' | null;
 
 /**
- * 貼り付けられた `colspan` を展開するときの上限列数。
+ * 1行あたりの上限列数。
  *
  * 実在の HTML には「全幅」のつもりで `colspan="99"` と書かれた表があり、
- * 悪意が無くても大きな値は飛んでくる。GFM の表として現実的に扱える列数を
- * 大きく超えたところで頭打ちにする(超過分は単に展開しないだけで、セルの
- * 内容は先頭セルに残るので情報は失われない)。
+ * 悪意が無くても大きな値は飛んでくる。`colspan` を実体化する以上、上限は
+ * こちら側で持つ必要がある。
+ *
+ * **セル単位ではなく行単位で数える。** 以前はセルごとに上限を掛けていたが、
+ * それだと `colspan="1000"` のセルを10個並べるだけで640列に膨らみ、
+ * 「上限列数」を名乗りながら列数を全く抑えられていなかった(独立レビューでの
+ * 指摘。5KB 程度の HTML で Node が OOM するところまで再現された)。
  */
-const MAX_COLSPAN_EXPANSION = 64;
+const MAX_COLUMNS_PER_ROW = 64;
+
+/**
+ * 1回の貼り付けで作ってよいセル数の総量。
+ *
+ * 行数は入力サイズに比例するが、`flattenTable` が全行を最大幅までパディング
+ * するため、1行だけ広い表があると行数 × 最大幅まで増える。行単位の上限だけでは
+ * この掛け算を抑えられないので、総量にも予算を持たせる。
+ *
+ * 予算を使い切った後は展開もパディングも行わない。セルの内容は先頭セルに
+ * 残るので**情報は失われない**(見た目の列数が頭打ちになるだけ)。
+ */
+const MAX_TOTAL_CELLS = 4096;
+
+/** 1回の `transformPasted` で使えるセル数の残り。 */
+type CellBudget = { left: number };
 
 function readAlignment(element: HTMLElement): CellAlignment {
   const align = element.style.textAlign;
@@ -74,44 +93,63 @@ const TableHeaderStrict = TableHeader.extend({
 });
 
 /**
- * 貼り付けられた表を、GFM のパイプテーブルとして必ず書き出せる形に均す。
+ * セル1個を GFM で書ける形に均し、`colspan` の分だけ横に展開する。
  *
- * tiptap の `TableCell` / `TableHeader` は `parseHTML` で `colspan` / `rowspan`
- * を読むため、ウェブページの結合セル入り `<table>` を貼るとそのまま
- * ドキュメントに入る。GFM のパイプテーブルは結合を表現できず、
- * `serialize.ts` は安全側に倒して例外を投げるので、**貼った瞬間から文書全体が
- * 保存できなくなる**(独立レビューでの指摘。「UI から作れないので到達しない」
- * という当初の想定が誤りだった)。
- *
- * ここで結合をほどいておけば、シリアライザ側の例外は本当に到達不能になる。
  * - `colspan` は「内容を持つセル + 空セル」に展開する(内容は失わない)。
- * - `rowspan` は 1 に落とす。行が短くなった分は空セルで埋め、表を矩形に保つ。
+ * - `rowspan` は 1 に落とす。
  * - `colwidth` は GFM に書けないので落とす。
  * - セル内の `hardBreak`(`<br>`)は空白に潰す。残すと `\` が書き出されるうえ、
  *   セル末尾では無音で消える。
+ *
+ * @param room この呼び出しで作ってよいセル数の上限(行の残り幅)
  */
-function flattenTable(table: PMNode): PMNode {
-  const rows: PMNode[][] = [];
+function normalizeCell(
+  cell: PMNode,
+  room: number,
+  budget: CellBudget,
+): PMNode[] {
+  const limit = Math.max(1, Math.min(room, budget.left));
+  const colspan = Math.min(limit, Math.max(1, Number(cell.attrs.colspan) || 1));
+  const attrs = { ...cell.attrs, colspan: 1, rowspan: 1, colwidth: null };
 
+  const out = [cell.type.create(attrs, stripHardBreaks(cell.content))];
+  for (let i = 1; i < colspan; i++) {
+    const filler = cell.type.createAndFill(attrs);
+    if (!filler) break;
+    out.push(filler);
+  }
+  budget.left -= out.length;
+  return out;
+}
+
+/** 行1本を均す。1行が `MAX_COLUMNS_PER_ROW` を超えないようにする。 */
+function normalizeRow(row: PMNode, budget: CellBudget): PMNode {
+  const cells: PMNode[] = [];
+  row.forEach((cell) => {
+    const room = MAX_COLUMNS_PER_ROW - cells.length;
+    if (room <= 0) return; // 上限に達したら以降のセルは展開しない
+    cells.push(...normalizeCell(cell, room, budget));
+  });
+  return row.type.create(row.attrs, cells);
+}
+
+/**
+ * 貼り付けられた表を、GFM のパイプテーブルとして必ず書き出せる形に均す。
+ *
+ * tiptap の `TableCell` / `TableHeader` は `parseHTML` で `colspan` / `rowspan`
+ * を読むため、ウェブページの結合セル入り表を貼るとそのままドキュメントに入る。
+ * GFM のパイプテーブルは結合を表現できず、`serialize.ts` は安全側に倒して
+ * 例外を投げるので、**貼った瞬間から文書全体が保存できなくなる**。
+ *
+ * 行の長さが不揃いなまま残ると、書き出し時に短い行が空セルで埋められて
+ * 見た目が変わる。ここで最大幅に揃えておく。
+ */
+function flattenTable(table: PMNode, budget: CellBudget): PMNode {
+  const rows: PMNode[][] = [];
   table.forEach((row) => {
+    const normalized = normalizeRow(row, budget);
     const cells: PMNode[] = [];
-    row.forEach((cell) => {
-      // クリップボードの中身は信用できない。tiptap は colspan を parseInt する
-      // だけでクランプしないため、`<td colspan="200000">` を貼られると
-      // 20万セルを実体化し(実測: 40万セル/179ms)、他の行も同じ幅まで
-      // パディングされてタブが固まる。属性を展開する方式にした以上、上限は
-      // こちら側で持つ必要がある。
-      const colspan = Math.min(
-        MAX_COLSPAN_EXPANSION,
-        Math.max(1, Number(cell.attrs.colspan) || 1),
-      );
-      const attrs = { ...cell.attrs, colspan: 1, rowspan: 1, colwidth: null };
-      cells.push(cell.type.create(attrs, stripHardBreaks(cell.content)));
-      for (let i = 1; i < colspan; i++) {
-        const filler = cell.type.createAndFill(attrs);
-        if (filler) cells.push(filler);
-      }
-    });
+    normalized.forEach((cell) => cells.push(cell));
     rows.push(cells);
   });
 
@@ -120,10 +158,12 @@ function flattenTable(table: PMNode): PMNode {
   rows.forEach((cells, index) => {
     const row = table.child(index);
     const cellType = cells[0]?.type ?? row.type.schema.nodes.tableCell!;
-    while (cells.length < width) {
+    // パディングも予算の対象。1行だけ広い表があると行数 × 最大幅まで増える。
+    while (cells.length < width && budget.left > 0) {
       const filler = cellType.createAndFill();
       if (!filler) break;
       cells.push(filler);
+      budget.left -= 1;
     }
     rebuilt.push(row.type.create(row.attrs, cells));
   });
@@ -154,14 +194,34 @@ export function stripHardBreaks(fragment: Fragment): Fragment {
   return Fragment.fromArray(out);
 }
 
-/** フラグメントを再帰的に走査し、`table` ノードだけ差し替える。 */
-function flattenTablesIn(fragment: Fragment): Fragment {
+/**
+ * フラグメントを再帰的に走査し、表まわりのノードを均す。
+ *
+ * **`table` だけを見てはいけない。** ProseMirror の `parseFromClipboard` は、
+ * クリップボード HTML が `<tr>` / `<td>` / `<thead>` など表の内部タグで始まる
+ * とき仮の `<table>` を被せてパースし、その後 `<table>` の内側まで降りてから
+ * スライスを切り出す。結果、スライスのトップレベルが `tableRow` や
+ * `tableCell` になる。2行以上あれば `normalizeSiblings` が `table` に包み直す
+ * ので救われるが、**1行/1セルだけだと包まれない**。
+ *
+ * 当初は `table` だけを対象にしていたため、ウェブページの表を部分選択して
+ * コピーするだけで結合セルが素通しし、貼った文書が保存不能になったままだった
+ * (独立レビューで8ケース中6ケースが再現。「経路は2つ、両方塞いだ」という
+ * 当時のコメントは数え漏れだった)。経路を数え上げて宣言する代わりに、
+ * `table-paste.test.ts` に経路のマトリクスをテストとして持たせてある。
+ */
+function flattenTablesIn(fragment: Fragment, budget: CellBudget): Fragment {
   const out: PMNode[] = [];
   fragment.forEach((node) => {
-    if (node.type.name === 'table') {
-      out.push(flattenTable(node));
+    const name = node.type.name;
+    if (name === 'table') {
+      out.push(flattenTable(node, budget));
+    } else if (name === 'tableRow') {
+      out.push(normalizeRow(node, budget));
+    } else if (name === 'tableCell' || name === 'tableHeader') {
+      out.push(...normalizeCell(node, MAX_COLUMNS_PER_ROW, budget));
     } else if (node.content.size > 0) {
-      out.push(node.copy(flattenTablesIn(node.content)));
+      out.push(node.copy(flattenTablesIn(node.content, budget)));
     } else {
       out.push(node);
     }
@@ -180,7 +240,8 @@ const TableWithView = Table.extend({
         props: {
           transformPasted: (slice) =>
             new Slice(
-              flattenTablesIn(slice.content),
+              // 予算は貼り付け1回ごとにリセットする。
+              flattenTablesIn(slice.content, { left: MAX_TOTAL_CELLS }),
               slice.openStart,
               slice.openEnd,
             ),

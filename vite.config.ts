@@ -1,5 +1,5 @@
-/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite';
+import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { crx } from '@crxjs/vite-plugin';
 import manifest from './manifest.config';
@@ -55,6 +55,7 @@ export default defineConfig({
     // 完全なコピー)が作られることがある。git は .gitignore で無視するが vitest は
     // 見に行くため、除外しないと同じテストが二重に走り、さらにその worktree に
     // 残っている一時テストの失敗まで拾ってしまう。
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/**'],
+    // 既定の除外を捨てないよう spread する。
+    exclude: [...configDefaults.exclude, '**/.claude/**'],
   },
 });

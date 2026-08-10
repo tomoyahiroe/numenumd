@@ -115,6 +115,21 @@ describe('paste paths that can carry merged cells', () => {
     });
   }
 
+  // レビュー指摘: `tableRow` 分岐を消しても全テストが通っていた。上のケースは
+  // どれも空ドキュメントへの貼り付けで、`tableRow` は汎用再帰へ落ちて子の
+  // `tableCell` 分岐が結局正規化するため。`tableRow` 分岐が本当に効くのは
+  // **既存の表の中に行を貼る**とき ─ ウェブの表から行をコピーして自分の表に
+  // 貼る、という普通の操作がそれに当たる。
+  it('leaves the document savable when a row is pasted inside an existing table', () => {
+    const editor = makeEditor();
+    editor.commands.insertTable({ rows: 2, cols: 2, withHeaderRow: true });
+    editor.commands.setTextSelection(4); // 先頭セルの中
+    editor.view.pasteHTML('<tr><td colspan="3">merged</td></tr>');
+
+    expect(() => serializeMarkdown(editor.getJSON())).not.toThrow();
+    expect(serializeMarkdown(editor.getJSON())).toContain('merged');
+  });
+
   it('keeps the pasted content through every one of those paths', () => {
     for (const [label, html] of CASES) {
       const editor = makeEditor();
@@ -187,57 +202,59 @@ describe('pasting a table with merged cells', () => {
     expect(out).not.toContain('\\');
   });
 
-  // 独立レビュー Blocker 2: 当初のクランプは**セル単位**だったため、
-  // `colspan="1000"` のセルを並べるだけで行幅が 64 の倍数に膨らみ、
-  // 「上限列数」を名乗りながら列数をまったく抑えられていなかった
-  // (5KB 程度の HTML で Node が OOM するところまで再現された)。
-  // 1セル形状だけを見るテストではこれを捕まえられないので、
-  // **複数セル**と**総量**の両方を固定する。
-  //
-  // 値を控えめ(colspan=200, 20セル)にしているのは失敗の仕方の問題。
-  // 上限が効いていないときテストが「落ちる」のではなく「返ってこなくなる」と、
-  // CI ではタイムアウトという最も分かりにくい壊れ方になる。
-  const pasteWide = (editor: Editor, cells: number, colspan: number) =>
-    pasteHtml(
+  // 独立レビュー(3周目)Blocker: 「1行あたりの上限」として実装した cap が、
+  // 上限を超えた分の**実セル**まで捨てていた。70セル貼ると64セルしか残らず、
+  // 100列の表を全選択コピーして貼り直すだけで35列が消える ─ 第一原則
+  // (ユーザーの Markdown を絶対に失わない)への正面違反であり、main には
+  // 無かった退行だった。列数の上限は撤回し、抑えるのは空セルの生成だけにした。
+  it('keeps every real cell when a row is wider than the colspan cap', () => {
+    const editor = makeEditor();
+    const tds = Array.from({ length: 70 }, (_, i) => `<td>c${i}</td>`).join('');
+    const doc = pasteHtml(editor, `<table><tr>${tds}</tr></table>`);
+
+    const rows = cells(doc);
+    expect(rows?.[0]).toHaveLength(70);
+    expect(rows?.[0]?.map((c) => c?.text)).toEqual(
+      Array.from({ length: 70 }, (_, i) => `c${i}`),
+    );
+    // シリアライズしても最後のセルまで残る。
+    expect(serializeMarkdown(doc)).toContain('c69');
+  });
+
+  it('survives a copy/paste round trip of a 100-column table', () => {
+    const editor = makeEditor();
+    const headers = Array.from({ length: 100 }, (_, i) => `<th>h${i}</th>`);
+    const bodies = Array.from({ length: 100 }, (_, i) => `<td>c${i}</td>`);
+    const doc = pasteHtml(
       editor,
-      `<table><tr>${`<td colspan="${colspan}">x</td>`.repeat(cells)}</tr><tr><td>a</td></tr></table>`,
+      `<table><tr>${headers.join('')}</tr><tr>${bodies.join('')}</tr></table>`,
     );
 
-  const shape = (doc: ReturnType<Editor['getJSON']>) => {
-    const rows = doc.content?.find((n) => n.type === 'table')?.content ?? [];
-    return {
-      maxRowWidth: rows.reduce(
-        (m, r) => Math.max(m, r.content?.length ?? 0),
-        0,
-      ),
-      totalCells: rows.reduce((sum, r) => sum + (r.content?.length ?? 0), 0),
-    };
-  };
-
-  it('caps a single absurd colspan at the per-row column limit', () => {
-    const editor = makeEditor();
-    const doc = pasteWide(editor, 1, 200);
-    expect(shape(doc).maxRowWidth).toBeLessThanOrEqual(64);
-    // 内容は先頭セルに残る(クランプは情報を落とさない)。
-    const first = doc.content?.find((n) => n.type === 'table')?.content?.[0];
-    expect(first?.content?.[0]?.content?.[0]?.content?.[0]?.text).toBe('x');
-  });
-
-  it('caps the row width no matter how many wide cells are in the row', () => {
-    const editor = makeEditor();
-    const { maxRowWidth, totalCells } = shape(pasteWide(editor, 20, 200));
-    // セル単位のクランプだと 20 x 64 = 1280 列になる。行単位でなければ通らない。
-    expect(maxRowWidth).toBeLessThanOrEqual(64);
-    expect(totalCells).toBeLessThanOrEqual(4096);
-  });
-
-  it('keeps every pasted cell reachable even when the row is capped', () => {
-    const editor = makeEditor();
-    const doc = pasteWide(editor, 20, 200);
     const out = serializeMarkdown(doc);
-    // 20個の `x` すべては残らない(列上限があるため)が、保存はできる。
-    expect(() => serializeMarkdown(doc)).not.toThrow();
-    expect(out).toContain('x');
+    expect(out).toContain('h99');
+    expect(out).toContain('c99');
+  });
+
+  // 空セルの生成だけは抑える。`colspan="200000"` をそのまま実体化すると
+  // 20万個の空セルでタブが固まる。内容を持つセルは常に1個出るので、この
+  // クランプで情報は落ちない。
+  it('clamps colspan expansion without losing the cell content', () => {
+    const editor = makeEditor();
+    const doc = pasteHtml(
+      editor,
+      '<table><tr><td colspan="5000">x</td><td>tail</td></tr><tr><td>a</td></tr></table>',
+    );
+
+    const rows = cells(doc);
+    // 5000 ではなく 64 + 1(tail)で頭打ち。
+    expect(rows?.[0]?.length).toBeLessThanOrEqual(70);
+    // 内容を持つセルは両方とも残る。
+    const texts = rows?.[0]?.map((c) => c?.text) ?? [];
+    expect(texts).toContain('x');
+    expect(texts).toContain('tail');
+    expect(rows?.[1]?.map((c) => c?.text)).toContain('a');
+    // 全行が同じ幅に揃う。
+    expect(rows?.every((row) => row?.length === rows[0]?.length)).toBe(true);
   });
 
   // 独立レビュー F3: `<br>` の修正はペースト側と書き出し側の二重で守られて

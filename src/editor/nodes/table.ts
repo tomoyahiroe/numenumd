@@ -11,33 +11,22 @@ import { tableNodeView } from './table-view';
 export type CellAlignment = 'left' | 'center' | 'right' | null;
 
 /**
- * 1行あたりの上限列数。
+ * 1個の `colspan` を展開してよい上限。
  *
  * 実在の HTML には「全幅」のつもりで `colspan="99"` と書かれた表があり、
- * 悪意が無くても大きな値は飛んでくる。`colspan` を実体化する以上、上限は
- * こちら側で持つ必要がある。
+ * 悪意が無くても大きな値は飛んでくる。`colspan="200000"` をそのまま実体化すると
+ * 20万個の空セルが生まれてタブが固まるので、ここで頭打ちにする。
  *
- * **セル単位ではなく行単位で数える。** 以前はセルごとに上限を掛けていたが、
- * それだと `colspan="1000"` のセルを10個並べるだけで640列に膨らみ、
- * 「上限列数」を名乗りながら列数を全く抑えられていなかった(独立レビューでの
- * 指摘。5KB 程度の HTML で Node が OOM するところまで再現された)。
+ * **抑えるのは空セルの生成だけで、実在するセルは絶対に捨てない。** 一時期
+ * 「1行あたりの上限」として実装していたが、それは上限を超えた分の**実セル**まで
+ * 落としており(70セル貼ると64セルしか残らない)、「ユーザーの Markdown を
+ * 絶対に失わない」という第一原則に違反していた。100列の表を全選択コピーして
+ * 貼り直すだけで35列が消える、という退行を独立レビューで指摘されて撤回した。
+ *
+ * したがって列数そのものに上限は無い。100列の表を貼れば100列できる。
+ * 重い表を貼れば重いのは受け入れる ─ 重さは原則違反ではないが、欠落は違反。
  */
-const MAX_COLUMNS_PER_ROW = 64;
-
-/**
- * 1回の貼り付けで作ってよいセル数の総量。
- *
- * 行数は入力サイズに比例するが、`flattenTable` が全行を最大幅までパディング
- * するため、1行だけ広い表があると行数 × 最大幅まで増える。行単位の上限だけでは
- * この掛け算を抑えられないので、総量にも予算を持たせる。
- *
- * 予算を使い切った後は展開もパディングも行わない。セルの内容は先頭セルに
- * 残るので**情報は失われない**(見た目の列数が頭打ちになるだけ)。
- */
-const MAX_TOTAL_CELLS = 4096;
-
-/** 1回の `transformPasted` で使えるセル数の残り。 */
-type CellBudget = { left: number };
+const MAX_COLSPAN_EXPANSION = 64;
 
 function readAlignment(element: HTMLElement): CellAlignment {
   const align = element.style.textAlign;
@@ -95,21 +84,19 @@ const TableHeaderStrict = TableHeader.extend({
 /**
  * セル1個を GFM で書ける形に均し、`colspan` の分だけ横に展開する。
  *
- * - `colspan` は「内容を持つセル + 空セル」に展開する(内容は失わない)。
+ * - `colspan` は「内容を持つセル + 空セル」に展開する。展開数は
+ *   `MAX_COLSPAN_EXPANSION` で頭打ちにするが、**内容を持つセルは常に1個
+ *   出力する**ので、このクランプで情報が落ちることはない。
  * - `rowspan` は 1 に落とす。
  * - `colwidth` は GFM に書けないので落とす。
  * - セル内の `hardBreak`(`<br>`)は空白に潰す。残すと `\` が書き出されるうえ、
  *   セル末尾では無音で消える。
- *
- * @param room この呼び出しで作ってよいセル数の上限(行の残り幅)
  */
-function normalizeCell(
-  cell: PMNode,
-  room: number,
-  budget: CellBudget,
-): PMNode[] {
-  const limit = Math.max(1, Math.min(room, budget.left));
-  const colspan = Math.min(limit, Math.max(1, Number(cell.attrs.colspan) || 1));
+function normalizeCell(cell: PMNode): PMNode[] {
+  const colspan = Math.min(
+    MAX_COLSPAN_EXPANSION,
+    Math.max(1, Number(cell.attrs.colspan) || 1),
+  );
   const attrs = { ...cell.attrs, colspan: 1, rowspan: 1, colwidth: null };
 
   const out = [cell.type.create(attrs, stripHardBreaks(cell.content))];
@@ -118,18 +105,13 @@ function normalizeCell(
     if (!filler) break;
     out.push(filler);
   }
-  budget.left -= out.length;
   return out;
 }
 
-/** 行1本を均す。1行が `MAX_COLUMNS_PER_ROW` を超えないようにする。 */
-function normalizeRow(row: PMNode, budget: CellBudget): PMNode {
+/** 行1本を均す。セルは1個も落とさない。 */
+function normalizeRow(row: PMNode): PMNode {
   const cells: PMNode[] = [];
-  row.forEach((cell) => {
-    const room = MAX_COLUMNS_PER_ROW - cells.length;
-    if (room <= 0) return; // 上限に達したら以降のセルは展開しない
-    cells.push(...normalizeCell(cell, room, budget));
-  });
+  row.forEach((cell) => cells.push(...normalizeCell(cell)));
   return row.type.create(row.attrs, cells);
 }
 
@@ -143,13 +125,17 @@ function normalizeRow(row: PMNode, budget: CellBudget): PMNode {
  *
  * 行の長さが不揃いなまま残ると、書き出し時に短い行が空セルで埋められて
  * 見た目が変わる。ここで最大幅に揃えておく。
+ *
+ * なお矩形化を途中でやめても意味がない。prosemirror-tables の `tableEditing`
+ * が `appendTransaction` で `fixTables` を走らせ、不揃いな行を最大幅まで
+ * 埋め直すためである(一時期ここに総セル数の予算を入れていたが、doc の
+ * セル数は1個も減っていなかった。独立レビューで実測により指摘された)。
  */
-function flattenTable(table: PMNode, budget: CellBudget): PMNode {
+function flattenTable(table: PMNode): PMNode {
   const rows: PMNode[][] = [];
   table.forEach((row) => {
-    const normalized = normalizeRow(row, budget);
     const cells: PMNode[] = [];
-    normalized.forEach((cell) => cells.push(cell));
+    normalizeRow(row).forEach((cell) => cells.push(cell));
     rows.push(cells);
   });
 
@@ -158,12 +144,10 @@ function flattenTable(table: PMNode, budget: CellBudget): PMNode {
   rows.forEach((cells, index) => {
     const row = table.child(index);
     const cellType = cells[0]?.type ?? row.type.schema.nodes.tableCell!;
-    // パディングも予算の対象。1行だけ広い表があると行数 × 最大幅まで増える。
-    while (cells.length < width && budget.left > 0) {
+    while (cells.length < width) {
       const filler = cellType.createAndFill();
       if (!filler) break;
       cells.push(filler);
-      budget.left -= 1;
     }
     rebuilt.push(row.type.create(row.attrs, cells));
   });
@@ -209,19 +193,23 @@ export function stripHardBreaks(fragment: Fragment): Fragment {
  * (独立レビューで8ケース中6ケースが再現。「経路は2つ、両方塞いだ」という
  * 当時のコメントは数え漏れだった)。経路を数え上げて宣言する代わりに、
  * `table-paste.test.ts` に経路のマトリクスをテストとして持たせてある。
+ *
+ * `tableRow` に専用の分岐は要らない。下の汎用再帰が子の `tableCell` /
+ * `tableHeader` を正規化するため、結果は完全に同一になる(本物のペースト
+ * 経路で doc の JSON を突き合わせて確認済み)。一時期あった `tableRow` 分岐は
+ * 行あたりの列数を cap するためのもので、その cap が実セルを捨てていたため
+ * 撤回した。テストで区別できないコードは残さない。
  */
-function flattenTablesIn(fragment: Fragment, budget: CellBudget): Fragment {
+function flattenTablesIn(fragment: Fragment): Fragment {
   const out: PMNode[] = [];
   fragment.forEach((node) => {
     const name = node.type.name;
     if (name === 'table') {
-      out.push(flattenTable(node, budget));
-    } else if (name === 'tableRow') {
-      out.push(normalizeRow(node, budget));
+      out.push(flattenTable(node));
     } else if (name === 'tableCell' || name === 'tableHeader') {
-      out.push(...normalizeCell(node, MAX_COLUMNS_PER_ROW, budget));
+      out.push(...normalizeCell(node));
     } else if (node.content.size > 0) {
-      out.push(node.copy(flattenTablesIn(node.content, budget)));
+      out.push(node.copy(flattenTablesIn(node.content)));
     } else {
       out.push(node);
     }
@@ -240,8 +228,7 @@ const TableWithView = Table.extend({
         props: {
           transformPasted: (slice) =>
             new Slice(
-              // 予算は貼り付け1回ごとにリセットする。
-              flattenTablesIn(slice.content, { left: MAX_TOTAL_CELLS }),
+              flattenTablesIn(slice.content),
               slice.openStart,
               slice.openEnd,
             ),

@@ -5,6 +5,7 @@ import { docToMd } from '../markdown/format';
 import { MarkdownEditor } from '../editor/Editor';
 import { KeyRouter } from '../keymap/router';
 import { FileController } from '../file/controller';
+import { createHandleStore } from '../file/handle-store';
 import { pickerIdForPath } from '../file/picker-id';
 import {
   resolveTheme,
@@ -22,9 +23,19 @@ function messageFor(e: unknown): string {
 export function App({ rawMarkdown, filename }: Props) {
   const initialDoc = useMemo(() => parseMarkdown(rawMarkdown), [rawMarkdown]);
   const router = useMemo(() => new KeyRouter(), []);
+  // 保存先の記憶(numenumd 自身が読み書きする唯一の永続データ。
+  // spec「保存先の記憶」節。ブラウザ側にはピッカーの最終ディレクトリや
+  // File System Access の許可も残るが、そちらは numenumd からは読めない)。
+  // キーはファイルのパス。IndexedDB が使えない環境では記憶しないストアに
+  // フォールバックし、従来どおり保存のたびにピッカーが出る。
+  const handleStore = useMemo(() => createHandleStore(), []);
   const fc = useMemo(
-    () => new FileController(filename, pickerIdForPath(location.pathname)),
-    [filename],
+    () =>
+      new FileController(filename, pickerIdForPath(location.pathname), {
+        path: location.pathname,
+        store: handleStore,
+      }),
+    [filename, handleStore],
   );
   const docRef = useRef<JSONContent>(initialDoc);
   const [dirty, setDirty] = useState(false);
@@ -34,6 +45,34 @@ export function App({ rawMarkdown, filename }: Props) {
     setToast(msg);
     setTimeout(() => setToast(null), 2000);
   }, []);
+
+  // 「その他」メニュー。開いたときに記憶件数を読み、何が消えるのか分かるように
+  // ラベルへ出す(件数の取得に失敗しても件数を出さないだけでメニューは開く)。
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [rememberedCount, setRememberedCount] = useState<number | null>(null);
+
+  const toggleMenu = useCallback(() => {
+    setMenuOpen((open) => {
+      if (!open) {
+        void handleStore
+          .count()
+          .then(setRememberedCount)
+          .catch(() => setRememberedCount(null));
+      }
+      return !open;
+    });
+  }, [handleStore]);
+
+  const forgetTargets = useCallback(async () => {
+    setMenuOpen(false);
+    try {
+      await handleStore.clear();
+      setRememberedCount(0);
+      flashToast('記憶した保存先を消しました');
+    } catch (e) {
+      flashToast(`消去に失敗しました: ${messageFor(e)}`);
+    }
+  }, [handleStore, flashToast]);
 
   const save = useCallback(async () => {
     if (!dirty) return;
@@ -139,7 +178,8 @@ export function App({ rawMarkdown, filename }: Props) {
   // テーマ: 既定は OS 設定に追従(auto)。トグルで auto → light → dark を循環。
   // スラッシュメニュー(tippy)が document.body 直下に生えるため、テーマの
   // data 属性はアプリコンテナではなく documentElement に刻む。
-  // 永続化はしない(spec の「永続状態を持たない」原則。タブごとにリセット)。
+  // テーマは永続化しない。保存先の記憶とは違い、選び直すコストがほぼ無いため
+  // 例外を増やす理由が無い(spec「保存先の記憶」節を参照)。タブごとにリセット。
   const [themePref, setThemePref] = useState<ThemePreference>('auto');
   useEffect(() => {
     const mql = window.matchMedia?.('(prefers-color-scheme: dark)');
@@ -174,6 +214,37 @@ export function App({ rawMarkdown, filename }: Props) {
         >
           ◐ {THEME_LABELS[themePref]}
         </button>
+        {/*
+          保存先の記憶を消す入口。使用頻度が低いのでヘッダに常設のボタンは
+          置かず、メニューへ畳む(MTG の「本文の邪魔をしない」という要請)。
+          拡張のオプションページには置けない — IndexedDB はオリジン単位で、
+          記憶は file:// オリジンのストアに入るため。
+        */}
+        <div className="numenumd-menu">
+          <button
+            type="button"
+            data-testid="more-menu"
+            className="numenumd-theme-toggle"
+            title="その他"
+            aria-expanded={menuOpen}
+            onClick={toggleMenu}
+          >
+            ⋯
+          </button>
+          {menuOpen && (
+            <div className="numenumd-menu-popup" role="menu">
+              <button
+                type="button"
+                data-testid="forget-targets"
+                role="menuitem"
+                onClick={forgetTargets}
+              >
+                記憶した保存先を消す
+                {rememberedCount !== null && ` (${rememberedCount})`}
+              </button>
+            </div>
+          )}
+        </div>
       </header>
       <MarkdownEditor
         initialDoc={initialDoc}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect } from 'vitest';
-import { createHandleStore, NULL_HANDLE_STORE } from './handle-store';
+import { createHandleStore } from './handle-store';
 import { createFakeHandleStore } from './handle-store.fake';
 
 const target = (mtime: number | null = 1) =>
@@ -21,7 +21,15 @@ describe('createHandleStore without IndexedDB', () => {
     await expect(store.put('/a.md', target())).resolves.toBeUndefined();
     await expect(store.get('/a.md')).resolves.toBeNull();
     await expect(store.count()).resolves.toBe(0);
-    await expect(store.clear()).resolves.toBeUndefined();
+  });
+
+  // 独立レビューの指摘: `clear()` だけは失敗を隠してはいけない。
+  // `PRIVACY.md` が「いつでも消せます…すべて削除します」と約束しているので、
+  // 消せていないのに「消しました」と表示するのは公開文書への裏切りになる。
+  // 以前は他のメソッドと同じ best-effort 実装で、`App.tsx` の catch は
+  // 到達不能な死んだコードだった。
+  it('reports failure from clear() instead of pretending it succeeded', async () => {
+    await expect(createHandleStore().clear()).rejects.toThrow();
   });
 
   it('resolves promptly rather than waiting out the open timeout', async () => {
@@ -30,14 +38,6 @@ describe('createHandleStore without IndexedDB', () => {
     const started = Date.now();
     await createHandleStore().get('/a.md');
     expect(Date.now() - started).toBeLessThan(500);
-  });
-});
-
-describe('NULL_HANDLE_STORE', () => {
-  it('behaves as an empty store', async () => {
-    await NULL_HANDLE_STORE.put('/a.md', target());
-    expect(await NULL_HANDLE_STORE.get('/a.md')).toBeNull();
-    expect(await NULL_HANDLE_STORE.count()).toBe(0);
   });
 });
 

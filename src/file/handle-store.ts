@@ -1,9 +1,16 @@
 /**
  * 「どのファイルをどこへ保存したか」の記憶。
  *
- * numenumd が持つ**唯一の永続状態**(spec「保存先の記憶」節)。編集内容そのものは
- * 一切保存しない。ここに入るのは `FileSystemFileHandle` と最終保存時刻だけで、
- * これはリロードのたびに保存先を選び直す体験を避けるためだけに存在する。
+ * **numenumd 自身が読み書きする唯一の永続データ**(spec「保存先の記憶」節)。
+ * 編集内容そのものは一切保存しない。ここに入るのは `FileSystemFileHandle` と
+ * 最終保存時刻だけで、リロードのたびに保存先を選び直す体験を避けるためだけに
+ * 存在する。
+ *
+ * なお「numenumd に関係する永続状態がこれだけ」という意味ではない。
+ * `showSaveFilePicker({ id })` を渡しているので Chrome は (origin, id) ごとに
+ * 最後に使ったディレクトリを覚えるし(`./picker-id.ts`)、File System Access の
+ * 許可も Chrome 側に永続化されうる。どちらも numenumd からは読めないが、
+ * ブラウザには残る。
  */
 export type RememberedTarget = {
   handle: FileSystemFileHandle;
@@ -12,9 +19,13 @@ export type RememberedTarget = {
 };
 
 export interface HandleStore {
+  /** 記憶が無い・引けない場合は `null`(呼び出し側はピッカーへ落ちる)。 */
   get(path: string): Promise<RememberedTarget | null>;
+  /** best-effort。失敗しても投げない(保存自体は成功しているため)。 */
   put(path: string, target: RememberedTarget): Promise<void>;
+  /** 引けない場合は 0。 */
   count(): Promise<number>;
+  /** **失敗したら throw する。** ユーザーが結果を信じる唯一の操作なので。 */
   clear(): Promise<void>;
 }
 
@@ -61,6 +72,14 @@ function openDatabase(): Promise<IDBDatabase | null> {
   });
 }
 
+/**
+ * 失敗を `null` に潰して返す読み取り系のヘルパー。
+ *
+ * 記憶が引けないことは機能低下であって障害ではない(呼び出し側は「記憶が
+ * 無かった」のと同じ経路 = ピッカーへ落ちる)ので、例外を投げずに `null` を
+ * 返す。**書き込みの成否をユーザーに伝える必要がある `clear()` では使わない**
+ * — `runWriteToCompletion` を参照。
+ */
 function runRequest<T>(
   db: IDBDatabase,
   mode: IDBTransactionMode,
@@ -80,17 +99,42 @@ function runRequest<T>(
 }
 
 /**
- * 記憶を持たないストア。IndexedDB が使えない環境ではこれに差し替わり、
- * 呼び出し側は「記憶が無かった」のと同じ経路(= ピッカーを出す)を通る。
+ * 書き込みを**コミットまで見届けて**、失敗したら reject する。
+ *
+ * `runRequest` は決して reject しないため、それで `clear()` を実装すると
+ * 「消せていないのに『消しました』と表示する」ことになる。`PRIVACY.md` は
+ * 「いつでも消せます…すべて削除します」と約束しているので、消去だけは結果を
+ * 正直に返す必要がある(独立レビューでの指摘。当時 `App.tsx` の catch は
+ * 到達不能な死んだコードだった)。
+ *
+ * `request.onsuccess` ではなく `transaction.oncomplete` を待つのは、リクエスト
+ * 自体は成功してもコミット時に abort しうるため(クォータ超過など)。
  */
-export const NULL_HANDLE_STORE: HandleStore = {
-  get: async () => null,
-  put: async () => {},
-  count: async () => 0,
-  clear: async () => {},
-};
+function runWriteToCompletion(
+  db: IDBDatabase,
+  run: (store: IDBObjectStore) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(STORE_NAME, 'readwrite');
+      run(tx.objectStore(STORE_NAME));
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error(String(e)));
+      return;
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () =>
+      reject(tx.error ?? new Error('IndexedDB transaction failed'));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+  });
+}
 
 export function createHandleStore(): HandleStore {
+  // 一度 open に失敗したら、そのタブが生きている間は再試行しない。記憶できない
+  // ことは機能低下でしかなく(毎回ピッカーが出るだけ)、保存のたびに2秒の
+  // タイムアウトを踏み直すほうが体験として悪いため、意図的にこうしている。
   let dbPromise: Promise<IDBDatabase | null> | null = null;
   const db = () => (dbPromise ??= openDatabase());
 
@@ -124,10 +168,14 @@ export function createHandleStore(): HandleStore {
       );
     },
 
+    // 唯一、失敗を呼び出し側へ伝えるメソッド。ユーザーが結果を信じる操作
+    // (「消えた」と思って画面を閉じる)なので、黙って成功にしてはいけない。
     async clear() {
       const database = await db();
-      if (!database) return;
-      await runRequest(database, 'readwrite', (store) => store.clear());
+      if (!database) {
+        throw new Error('IndexedDB is unavailable');
+      }
+      await runWriteToCompletion(database, (store) => store.clear());
     },
   };
 }

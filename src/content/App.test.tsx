@@ -286,7 +286,11 @@ describe('remembered save targets', () => {
 
     const call = vi.mocked(FileController).mock.calls.at(-1) as unknown[];
     const store = (call[2] as { store: { clear: () => Promise<void> } }).store;
-    const clear = vi.spyOn(store, 'clear');
+    // jsdom には IndexedDB が無く、実装の clear() は正しく reject する。
+    // ここで見たいのは「成功したら成功と伝える」経路なので成功に差し替える。
+    const clear = vi
+      .spyOn(store, 'clear')
+      .mockImplementation(async () => undefined);
 
     await act(async () => {
       screen.getByTestId('more-menu').click();
@@ -299,6 +303,30 @@ describe('remembered save targets', () => {
     expect(await screen.findByText('記憶した保存先を消しました')).toBeTruthy();
     // 実行後はメニューが閉じる。
     expect(screen.queryByTestId('forget-targets')).toBeNull();
+  });
+
+  // 独立レビューの指摘: 以前は `clear()` が失敗しても必ず成功トーストが出て
+  // いた(ストア側が決して reject しなかったため、この catch は死んでいた)。
+  // 「いつでも消せます」は公開文書の約束なので、消せなかったらそう伝える。
+  it('reports a failure instead of claiming the targets were cleared', async () => {
+    render(<App rawMarkdown={'# a'} filename="note.md" />);
+    await waitFor(() => expect(window.__numenumdEditor__).toBeTruthy());
+
+    const call = vi.mocked(FileController).mock.calls.at(-1) as unknown[];
+    const store = (call[2] as { store: { clear: () => Promise<void> } }).store;
+    vi.spyOn(store, 'clear').mockRejectedValue(new Error('disk on fire'));
+
+    await act(async () => {
+      screen.getByTestId('more-menu').click();
+    });
+    await act(async () => {
+      screen.getByTestId('forget-targets').click();
+    });
+
+    expect(
+      await screen.findByText('消去に失敗しました: disk on fire'),
+    ).toBeTruthy();
+    expect(screen.queryByText('記憶した保存先を消しました')).toBeNull();
   });
 
   it('does not show the menu contents until the ⋯ button is pressed', async () => {

@@ -468,6 +468,82 @@ describe('table NodeView', () => {
     expect(size()).toEqual({ rows: 2, cols: 2 });
   });
 
+  // 独立レビュー F6: `layoutGrips()` の呼び元は init と `update()` だけで、
+  // それを守るテストが無く、`table.style.minWidth` の行も含めて消しても
+  // 全テストが通っていた。jsdom はピクセルを測れないものの、グリップの
+  // 「個数」と minWidth の「計算値」は観測できる。
+  it('keeps grips and the min-width in step with the column/row count', async () => {
+    const { container } = await mountWith(
+      tableDoc([
+        ['a', 'b', 'c'],
+        ['1', '2', '3'],
+      ]),
+    );
+    const editor = window.__numenumdEditor__!;
+    const table = container.querySelector('table')!;
+    const colGrips = () =>
+      container.querySelectorAll(
+        '.numenumd-table-grips-col .numenumd-table-grip',
+      ).length;
+    const rowGrips = () =>
+      container.querySelectorAll(
+        '.numenumd-table-grips-row .numenumd-table-grip',
+      ).length;
+
+    expect(colGrips()).toBe(3);
+    expect(rowGrips()).toBe(2);
+    const initialMinWidth = table.style.minWidth;
+    expect(initialMinWidth).not.toBe('');
+
+    act(() => {
+      editor.commands.setTextSelection(3);
+      editor.commands.deleteColumn();
+    });
+    expect(colGrips()).toBe(2);
+    // 列が減れば下限幅も比例して縮む。
+    expect(parseInt(table.style.minWidth, 10)).toBe(
+      (parseInt(initialMinWidth, 10) / 3) * 2,
+    );
+
+    act(() => {
+      editor.commands.deleteRow();
+    });
+    expect(rowGrips()).toBe(1);
+  });
+
+  // 独立レビュー M1: `ResizeObserver` はテストが1本も無く、ブロックごと消しても
+  // 全テストが通っていた。jsdom は `ResizeObserver` を持たないので実装側は
+  // 常に null になる ─ スタブを注入して配線だけを固定する。
+  it('observes the scroll container for resizes and disconnects on destroy', async () => {
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    class StubResizeObserver {
+      constructor(public cb: () => void) {}
+      observe = observe;
+      disconnect = disconnect;
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal('ResizeObserver', StubResizeObserver);
+    try {
+      const { container, unmount } = await mountWith(
+        tableDoc([
+          ['a', 'b'],
+          ['1', '2'],
+        ]),
+      );
+      const scroll = container.querySelector('.numenumd-table-scroll');
+      expect(observe).toHaveBeenCalledWith(scroll);
+
+      // マウント中に NodeView が作り直されることがあるので、絶対回数ではなく
+      // 「unmount で必ず1つ増える」ことを見る。
+      const before = disconnect.mock.calls.length;
+      unmount();
+      expect(disconnect.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('marks the wrapper active only while the cursor sits inside the table', async () => {
     const { container } = await mountWith({
       type: 'doc',

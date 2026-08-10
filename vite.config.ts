@@ -1,5 +1,5 @@
-/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite';
+import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { crx } from '@crxjs/vite-plugin';
 import manifest from './manifest.config';
@@ -49,5 +49,13 @@ function chromeSafeEncoding(): Plugin {
 
 export default defineConfig({
   plugins: [react(), crx({ manifest }), chromeSafeEncoding()],
-  test: { environment: 'jsdom' },
+  test: {
+    environment: 'jsdom',
+    // `.claude/worktrees/` にはエージェント作業用の git worktree(= このリポジトリの
+    // 完全なコピー)が作られることがある。git は .gitignore で無視するが vitest は
+    // 見に行くため、除外しないと同じテストが二重に走り、さらにその worktree に
+    // 残っている一時テストの失敗まで拾ってしまう。
+    // 既定の除外を捨てないよう spread する。
+    exclude: [...configDefaults.exclude, '**/.claude/**'],
+  },
 });

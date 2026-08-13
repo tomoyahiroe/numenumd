@@ -641,3 +641,138 @@ describe('table NodeView', () => {
     expect(cell?.content?.[0]?.content?.map((n) => n.type)).toEqual(['text']);
   });
 });
+
+/**
+ * NodeView が `stopEvent: () => true` を返すため ProseMirror は math block 上の
+ * mousedown を受け取れず、マウスでノードを選択して消すことができない
+ * (クリックは編集モードに使われてしまう)。「編集モードで中身を空にして
+ * Backspace」がマウスだけで辿り着ける唯一の削除手段になる。
+ */
+describe('mathBlock deletion from the editor (bug report)', () => {
+  const openEditor = async (
+    content: Parameters<typeof mountWith>[0]['content'],
+  ) => {
+    const { container } = await mountWith({ type: 'doc', content });
+    const mathDom = container.querySelector('[data-math-block]')!;
+    act(() => {
+      fireEvent.click(mathDom);
+    });
+    return { container, mathDom, textarea: mathDom.querySelector('textarea')! };
+  };
+
+  for (const key of ['Backspace', 'Delete'] as const) {
+    it(`deletes the whole block on ${key} when the textarea is empty`, async () => {
+      const { container, textarea } = await openEditor([
+        { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
+        { type: 'mathBlock', attrs: { latex: 'E = mc^2' } },
+      ]);
+      act(() => {
+        fireEvent.change(textarea, { target: { value: '' } });
+        fireEvent.keyDown(textarea, { key });
+      });
+
+      const types = window
+        .__numenumdEditor__!.getJSON()
+        .content?.map((n) => n.type);
+      expect(types).not.toContain('mathBlock');
+      expect(container.querySelector('[data-math-block]')).toBeNull();
+    });
+  }
+
+  it('does not delete the block while the textarea still has content', async () => {
+    const { textarea } = await openEditor([
+      { type: 'mathBlock', attrs: { latex: 'E = mc^2' } },
+      { type: 'paragraph' },
+    ]);
+    act(() => {
+      fireEvent.keyDown(textarea, { key: 'Backspace' });
+    });
+    expect(window.__numenumdEditor__!.getJSON().content?.[0]?.type).toBe(
+      'mathBlock',
+    );
+  });
+
+  /**
+   * ノードを消すと NodeView が破棄され textarea が DOM から外れて blur が飛ぶ。
+   * `done` を dispatch より先に立てていないと finish(false) が走り、既に存在
+   * しない位置へ setNodeMarkup しようとして壊れる。
+   */
+  it('survives the blur that follows the node being destroyed', async () => {
+    const { textarea } = await openEditor([
+      { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
+      { type: 'mathBlock', attrs: { latex: 'x' } },
+    ]);
+    act(() => {
+      fireEvent.change(textarea, { target: { value: '' } });
+      fireEvent.keyDown(textarea, { key: 'Backspace' });
+      fireEvent.blur(textarea);
+    });
+    const doc = window.__numenumdEditor__!.getJSON();
+    expect(doc.content?.map((n) => n.type)).toEqual(['paragraph']);
+  });
+
+  it('leaves a usable document when the math block was the only node', async () => {
+    const { textarea } = await openEditor([
+      { type: 'mathBlock', attrs: { latex: 'x' } },
+    ]);
+    act(() => {
+      fireEvent.change(textarea, { target: { value: '' } });
+      fireEvent.keyDown(textarea, { key: 'Backspace' });
+    });
+    const editor = window.__numenumdEditor__!;
+    expect(editor.getJSON().content?.map((n) => n.type)).not.toContain(
+      'mathBlock',
+    );
+    // カーソルが置ける状態であること(削除後に入力を続けられる)
+    expect(editor.state.selection.$from.parent.isTextblock).toBe(true);
+  });
+});
+
+/**
+ * 空の数式を KaTeX に描かせると何も出力されず、NodeView が padding 分の高さしか
+ * 持たない不可視の帯になる。クリックして編集モードに入ることも事実上できなくなる。
+ */
+describe('empty mathBlock placeholder (bug report)', () => {
+  it('renders a visible placeholder instead of nothing', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [{ type: 'mathBlock', attrs: { latex: '' } }],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+    expect(mathDom.querySelector('.numenumd-math-block-empty')).toBeTruthy();
+    expect(mathDom.querySelector('.katex')).toBeNull();
+    expect(mathDom.textContent?.trim()).not.toBe('');
+  });
+
+  it('still opens the editor when the placeholder is clicked', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [{ type: 'mathBlock', attrs: { latex: '' } }],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+    act(() => {
+      fireEvent.click(mathDom);
+    });
+    expect(mathDom.querySelector('textarea')).toBeTruthy();
+  });
+
+  it('shows the placeholder after the latex is cleared and committed', async () => {
+    const { container } = await mountWith({
+      type: 'doc',
+      content: [
+        { type: 'mathBlock', attrs: { latex: 'x' } },
+        { type: 'paragraph' },
+      ],
+    });
+    const mathDom = container.querySelector('[data-math-block]')!;
+    act(() => {
+      fireEvent.click(mathDom);
+    });
+    const textarea = mathDom.querySelector('textarea')!;
+    act(() => {
+      fireEvent.change(textarea, { target: { value: '   ' } });
+      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
+    });
+    expect(mathDom.querySelector('.numenumd-math-block-empty')).toBeTruthy();
+  });
+});

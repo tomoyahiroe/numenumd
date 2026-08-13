@@ -43,6 +43,44 @@ describe('mathBlock input automation', () => {
     editor.commands.keyboardShortcut('Enter');
     expect(editor.getJSON().content?.[0]?.type).toBe('mathBlock');
   });
+
+  /**
+   * 1行完結形。ファイルから読み込んだ `$$…$$`(`parse.ts` の `mathBlockRule`)と
+   * 揃えて、エディタで直接打った場合も数式ブロックにする。`singleLine` を立てる
+   * ので、保存しても1行のまま書き戻る。
+   */
+  it('converts "$$latex$$" typed at the start of a paragraph into a mathBlock', () => {
+    const editor = makeEditor();
+    // 入力ルールは「最後の1文字を打った瞬間」に走る。段落には既に
+    // `$$Y = X + a$` が入っていて、そこへ閉じの `$` を打つ、という状況を作る。
+    editor.commands.setContent('<p>$$Y = X + a$</p>');
+    const { view } = editor;
+    const end = view.state.doc.content.size - 1;
+    view.someProp('handleTextInput', (f) =>
+      f(view, end, end, '$', () => view.state.tr),
+    );
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: 'mathBlock',
+      attrs: { latex: 'Y = X + a', singleLine: true },
+    });
+  });
+
+  /**
+   * `find` は行頭からカーソル位置までしか見ないため、カーソルの後ろに文字が
+   * 残っている段落がありうる。段落ごと mathBlock に置き換える実装なので、
+   * ここで変換してしまうと後ろの文字が無警告で消える。
+   */
+  it('does not convert when text remains after the cursor', () => {
+    const editor = makeEditor();
+    editor.commands.setContent('<p>$$x$tail</p>');
+    const { view } = editor;
+    const at = 5; // "$$x$" の直後("tail" の前)
+    view.someProp('handleTextInput', (f) =>
+      f(view, at, at, '$', () => view.state.tr),
+    );
+    expect(editor.getJSON().content?.[0]?.type).toBe('paragraph');
+    expect(editor.state.doc.textContent).toBe('$$x$tail');
+  });
 });
 
 describe('bare "[] " task list conversion', () => {

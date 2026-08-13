@@ -272,9 +272,25 @@ const nodeSerializers: NodeSerializers = {
     state.write(node.attrs.checked ? '[x] ' : '[ ] ');
     state.renderContent(node);
   },
+  /**
+   * ブロック数式。元の Markdown が1行完結形(`$$latex$$`)だった場合は
+   * そのまま1行で書き戻す(`singleLine` 属性。`parse.ts` の `mathBlockRule` が
+   * 立てる)。Prettier は `$$Y = X + a$$` を段落として扱いこの行に触らないため、
+   * 3行へ広げると「開いて保存しただけ」で全数式に差分が出てしまう。
+   *
+   * ただし latex に改行が入っている場合は `singleLine` でも必ず3行で書く。
+   * 1行で書き出すと再パース時に閉じ `$$` が見つからず別物になり、往復が壊れる
+   * (1行で読み込んだブロックを編集して改行を足すと実際に起きる)。
+   */
   mathBlock: (state, node) => {
+    const latex = String(node.attrs.latex ?? '');
+    if (node.attrs.singleLine && !latex.includes('\n')) {
+      state.write(`$$${latex}$$`);
+      state.closeBlock(node);
+      return;
+    }
     state.write('$$\n');
-    state.text(node.attrs.latex, false);
+    state.text(latex, false);
     state.ensureNewLine();
     state.write('$$');
     state.closeBlock(node);

@@ -14,3 +14,7 @@ x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
 $$
 
 Another inline expression $\alpha + \beta = \gamma$ appears here too.
+
+Obsidian や GitHub 由来のファイルには1行完結形も現れる:
+
+$$Y = X + a$$

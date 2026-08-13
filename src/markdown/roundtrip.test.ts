@@ -24,6 +24,40 @@ describe('serialize', () => {
     expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
   });
 
+  /**
+   * 1行で書かれた数式は1行のまま書き戻す。Prettier は `$$Y = X + a$$` を段落として
+   * 扱いこの行に触らないため、3行へ広げると「開いて保存しただけ」で全数式に
+   * 差分が出てしまう(= numenumd だけが起こす差分)。
+   */
+  it('keeps single-line $$…$$ on one line', () => {
+    const md = '$$Y = X + a$$\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  it('keeps single-line and fenced math side by side', () => {
+    const md = '$$Y = X + a$$\n\n$$\nE = mc^2\n$$\n';
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
+  /**
+   * `singleLine` が立っていても latex に改行があれば必ず3行で書く。1行で書き出すと
+   * 再パース時に閉じ `$$` が見つからず別物になり、往復が壊れる(1行で読み込んだ
+   * ブロックを編集して改行を足すと実際に起きる)。
+   */
+  it('falls back to the fenced form when a single-line block gains a newline', () => {
+    const md = serializeMarkdown({
+      type: 'doc',
+      content: [
+        {
+          type: 'mathBlock',
+          attrs: { latex: 'a =\nb', singleLine: true },
+        },
+      ],
+    });
+    expect(md).toBe('$$\na =\nb\n$$\n');
+    expect(serializeMarkdown(parseMarkdown(md))).toBe(md);
+  });
+
   it('writes rawBlock content verbatim', () => {
     const md = '<div class="note">\nhi\n</div>\n';
     expect(serializeMarkdown(parseMarkdown(md))).toBe(md);

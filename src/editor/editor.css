@@ -191,6 +191,17 @@ body {
   padding: 8px 4px;
   text-align: center;
 }
+/* 空の数式ブロックのプレースホルダ。これが無いと空のブロックは
+   padding 分の高さしか持たない不可視の帯になり、クリックして編集モードに
+   入ることも事実上できなくなる。 */
+.numenumd-math-block-empty {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px dashed var(--nd-input-border);
+  border-radius: 4px;
+  color: var(--nd-muted);
+  font-size: 0.85em;
+}
 .numenumd-math-block-edit,
 .numenumd-raw-edit,
 .numenumd-frontmatter-edit {

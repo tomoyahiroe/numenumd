@@ -38,8 +38,55 @@ describe('parseMarkdown', () => {
     const doc = parseMarkdown('$$\n\\int_0^1 x dx\n$$');
     expect(doc.content?.[0]).toMatchObject({
       type: 'mathBlock',
-      attrs: { latex: '\\int_0^1 x dx' },
+      attrs: { latex: '\\int_0^1 x dx', singleLine: false },
     });
+  });
+
+  /**
+   * Obsidian・GitHub をはじめ多くのレンダラは1行 `$$…$$` を display math として
+   * 扱うため、そちら由来の `.md` には普通に現れる。かつては開き行に続きがあると
+   * ブロック数式として成立せず、インライン側も `matchMathSpanAt` が `$$` 隣接を
+   * 除外するため、どちらにも拾われず素のテキストとして描画されていた。
+   */
+  it('turns single-line $$…$$ into a mathBlock', () => {
+    expect(parseMarkdown('$$Y = X + a$$').content?.[0]).toMatchObject({
+      type: 'mathBlock',
+      attrs: { latex: 'Y = X + a', singleLine: true },
+    });
+  });
+
+  it('trims padding inside single-line $$…$$', () => {
+    expect(parseMarkdown('$$ Y = X + a $$').content?.[0]).toMatchObject({
+      type: 'mathBlock',
+      attrs: { latex: 'Y = X + a', singleLine: true },
+    });
+  });
+
+  it('treats an empty single-line $$$$ as an empty mathBlock', () => {
+    expect(parseMarkdown('$$$$').content?.[0]).toMatchObject({
+      type: 'mathBlock',
+      attrs: { latex: '', singleLine: true },
+    });
+  });
+
+  it('leaves half-open $$ forms as paragraph text', () => {
+    for (const md of ['$$Y = X$', '$$Y = X$$tail']) {
+      const node = parseMarkdown(md).content?.[0];
+      expect(node?.type, md).toBe('paragraph');
+      expect(node?.content?.map((t) => t.text).join(''), md).toBe(md);
+    }
+  });
+
+  /**
+   * 行の途中に現れる `$$…$$` は今回の対象外(MTG で保留)。行頭 `$$` で始まる
+   * 行だけをブロック数式として扱う、という線引きを固定する。
+   */
+  it('leaves mid-sentence $$…$$ as paragraph text', () => {
+    const para = parseMarkdown('foo $$Y = X$$ bar').content?.[0];
+    expect(para?.type).toBe('paragraph');
+    expect(para?.content?.map((t) => t.text).join('')).toBe(
+      'foo $$Y = X$$ bar',
+    );
   });
 
   it('keeps inline math as plain text', () => {

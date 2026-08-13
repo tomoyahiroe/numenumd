@@ -23,6 +23,17 @@ const TEXT_ALIGN_RE = /text-align:\s*(left|center|right)/;
 /**
  * ブロック数式ルール: 行頭 `$$` から次の `$$` のみの行までを
  * 単一の `math_block` トークンにする(fence と同じ骨格)。
+ *
+ * 開き `$$` と閉じ `$$` が同じ行にある1行完結形 `$$latex$$` も受ける。
+ * Obsidian・GitHub をはじめ多くのレンダラがこの書き方を display math として
+ * 扱うため、そちら由来の `.md` には普通に現れる。かつてはこの形を弾いており
+ * (開き行の残りを空白のみに限定していた)、インライン側も `matchMathSpanAt` が
+ * `$$` 隣接を除外するため、どちらにも拾われず素のテキストとして描画されていた。
+ *
+ * 1行完結形かどうかは `token.meta.singleLine` に載せて `serialize.ts` へ渡す。
+ * ユーザーが1行で書いた数式を保存時に3行へ広げてしまわないため
+ * (Prettier は `$$Y = X + a$$` を段落として扱いこの行に触らないので、
+ * 広げると numenumd だけが起こす差分になってしまう)。
  */
 function mathBlockRule(
   state: StateBlock,
@@ -34,8 +45,22 @@ function mathBlockRule(
   const max = state.eMarks[startLine] ?? start;
   if ((state.sCount[startLine] ?? 0) - state.blkIndent >= 4) return false;
   if (state.src.slice(start, start + 2) !== '$$') return false;
-  // 行の残りが空白のみであること(`$$latex-inline$` のような誤検出を防ぐ)
-  if (state.src.slice(start + 2, max).trim().length > 0) return false;
+
+  const rest = state.src.slice(start + 2, max).trim();
+  if (rest.length > 0) {
+    // 開き行に続きがある場合、1行完結形 `$$latex$$` のときだけ成立させる。
+    // `$$latex$` や `$$latex$$tail` のような中途半端な形は従来どおり不成立
+    // (段落テキストとして扱う)。
+    if (!rest.endsWith('$$')) return false;
+    if (silent) return true;
+    state.line = startLine + 1;
+    const token = state.push('math_block', '', 0);
+    token.content = rest.slice(0, -2);
+    token.markup = '$$';
+    token.meta = { singleLine: true };
+    token.map = [startLine, state.line];
+    return true;
+  }
   if (silent) return true;
 
   let nextLine = startLine;
@@ -486,7 +511,11 @@ function buildTokenMap(): Record<string, ParseSpec> {
     },
     math_block: {
       node: 'mathBlock',
-      getAttrs: (tok) => ({ latex: tok.content.trim() }),
+      getAttrs: (tok) => ({
+        latex: tok.content.trim(),
+        singleLine:
+          (tok.meta as { singleLine?: boolean } | null)?.singleLine === true,
+      }),
       noCloseToken: true,
     },
     raw_block: {

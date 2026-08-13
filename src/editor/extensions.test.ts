@@ -74,7 +74,31 @@ describe('buildExtensions', () => {
     editor.commands.setContent('<div data-math-block>E = mc^2</div>');
     expect(editor.getJSON().content?.[0]).toMatchObject({
       type: 'mathBlock',
-      attrs: { latex: 'E = mc^2' },
+      attrs: { latex: 'E = mc^2', singleLine: false },
+    });
+  });
+
+  /**
+   * `singleLine`(元の Markdown が1行完結形 `$$…$$` だったか)は HTML 経由でも
+   * 保たれる必要がある。コピー&ペーストは HTML を経由するため、ここが落ちると
+   * 1行で書かれた数式をコピペしただけで3行に化ける。
+   */
+  it('mathBlock keeps singleLine across an HTML round trip', () => {
+    const editor = makeEditor();
+    editor.commands.setContent({
+      type: 'doc',
+      content: [
+        { type: 'mathBlock', attrs: { latex: 'Y = X + a', singleLine: true } },
+      ],
+    });
+    const html = editor.getHTML();
+    expect(html).toContain('data-single-line');
+
+    const other = makeEditor();
+    other.commands.setContent(html);
+    expect(other.getJSON().content?.[0]).toMatchObject({
+      type: 'mathBlock',
+      attrs: { latex: 'Y = X + a', singleLine: true },
     });
   });
 

@@ -267,6 +267,55 @@ CSS は `--nd-muted` の文字色 + 破線の枠で、本文と区別しつつ�
 
 ---
 
+### Task 5.5: `listItem` の空段落を書き出さない(独立レビュー後に追加)
+
+**Files:**
+
+- Modify: `src/markdown/serialize.ts`, `src/markdown/roundtrip.test.ts`
+- Create: `tests/fixtures/list-blocks.md`
+
+独立レビューで、`- $$a = b$$` を含むファイルが**開いて保存するだけ**で壊れることが
+判明した(`-` の空項目 + 数式が項目の外へ飛び出す。しかも2項目以上あると冪等でも
+なくなる)。原因は3段:
+
+1. Task 1 の1行完結形の分岐がリスト項目のマーカー行でも発火し、トークン列が
+   `list_item_open → math_block → list_item_close` になる。
+2. `listItem` のスキーマは `paragraph block*` なので `createAndFill` が
+   **元の Markdown に無い空の `paragraph`** を先頭へ挿入する。
+3. `listItem` レンダラがそれを書き出すと「空行で始まるリスト項目」になり、
+   CommonMark ではそれは空の項目なので後続ブロックが項目の外へ出る。
+
+3 は `main` に既存のバグ(` - ```code``` ` / `- > quote` / リスト内の3行数式が
+同じ壊れ方をする)だが、この PR は `- $$x$$` という一般的な入力を新たにその経路へ
+流し込む。`listItem` レンダラで「先頭が空段落 かつ 後続ブロックあり」のときだけ
+その空段落を飛ばす:
+
+```ts
+const first = node.firstChild;
+if (
+  node.childCount > 1 &&
+  first?.type.name === 'paragraph' &&
+  first.content.size === 0
+) {
+  node.forEach((child, _offset, index) => {
+    if (index > 0) state.render(child, node, index);
+  });
+  return;
+}
+state.renderContent(node);
+```
+
+空段落を飛ばすと `state.write` の `flushClose` が走らないため、後続ブロックが
+マーカー行に直接乗り `- $$x$$` がそのまま往復する。項目が空段落**だけ**で
+できている(`-` だけの空項目)場合は手を出さない。
+
+**検証:** `tests/fixtures/list-blocks.md` を新設し `BYTE_STABLE_FIXTURES` に
+登録する(既存の harness が冪等性 + バイト一致の両方を見る)。収録する形:
+`- $$x$$` / `1. $$x$$` / ` - ```code``` ` / `- > quote` / リスト内3行数式 /
+ネスト `- - $$x$$` / 通常のリスト / 複数段落の項目 / `- [ ] $$x$$`。
+
+---
+
 ### Task 6: 実機確認
 
 `docs/smoke-checklist.md` に項目を追加し、実際の Chrome で確認する。

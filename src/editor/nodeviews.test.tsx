@@ -694,11 +694,17 @@ describe('mathBlock deletion from the editor (bug report)', () => {
 
   /**
    * ノードを消すと NodeView が破棄され textarea が DOM から外れて blur が飛ぶ。
-   * `done` を dispatch より先に立てていないと finish(false) が走り、既に存在
-   * しない位置へ setNodeMarkup しようとして壊れる。
+   * `done` を dispatch より先に立てていないと、その blur で finish(false) が
+   * 走ってしまう。
+   *
+   * doc の中身だけを見ても検証にならない。破棄後の `getPos()` は undefined を
+   * 返すので `commit()` は早期 return し、doc は結局壊れないからである
+   * (= `done` を外してもそのアサーションは通ってしまう)。`finish` が走ったか
+   * どうかは、もう1つの副作用である `renderDisplay()` — 外れた DOM の中身を
+   * 描画済み表示に置き換える — で判定する。
    */
-  it('survives the blur that follows the node being destroyed', async () => {
-    const { textarea } = await openEditor([
+  it('does not run finish() on the blur that follows deletion', async () => {
+    const { mathDom, textarea } = await openEditor([
       { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
       { type: 'mathBlock', attrs: { latex: 'x' } },
     ]);
@@ -707,8 +713,31 @@ describe('mathBlock deletion from the editor (bug report)', () => {
       fireEvent.keyDown(textarea, { key: 'Backspace' });
       fireEvent.blur(textarea);
     });
-    const doc = window.__numenumdEditor__!.getJSON();
-    expect(doc.content?.map((n) => n.type)).toEqual(['paragraph']);
+    // finish が走っていれば renderDisplay がここを描画済み表示に差し替える。
+    expect(mathDom.querySelector('.numenumd-math-block-rendered')).toBeNull();
+    expect(
+      window.__numenumdEditor__!.getJSON().content?.map((n) => n.type),
+    ).toEqual(['paragraph']);
+  });
+
+  it('leaves the cursor where the deleted block was', async () => {
+    const { textarea } = await openEditor([
+      { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
+      { type: 'mathBlock', attrs: { latex: 'x' } },
+      { type: 'paragraph', content: [{ type: 'text', text: 'after' }] },
+    ]);
+    act(() => {
+      fireEvent.change(textarea, { target: { value: '' } });
+      fireEvent.keyDown(textarea, { key: 'Backspace' });
+    });
+    const editor = window.__numenumdEditor__!;
+    const { selection } = editor.state;
+    expect(selection.empty).toBe(true);
+    expect(selection.$from.parent.isTextblock).toBe(true);
+    // 削除した位置("before" の直後 = "after" 段落の先頭)にカーソルが落ちる。
+    // 消えたブロックの跡地から続きを書ける、という体験そのものの固定。
+    expect(selection.$from.parent.textContent).toBe('after');
+    expect(selection.from).toBe(9);
   });
 
   it('leaves a usable document when the math block was the only node', async () => {
@@ -725,6 +754,7 @@ describe('mathBlock deletion from the editor (bug report)', () => {
     );
     // カーソルが置ける状態であること(削除後に入力を続けられる)
     expect(editor.state.selection.$from.parent.isTextblock).toBe(true);
+    expect(editor.state.selection.from).toBe(1);
   });
 });
 

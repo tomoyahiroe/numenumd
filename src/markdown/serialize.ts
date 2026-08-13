@@ -255,13 +255,41 @@ const nodeSerializers: NodeSerializers = {
       return state.repeat(' ', maxW - nStr.length) + nStr + '. ';
     });
   },
-  // 既定の list_item は `state.renderContent(node)` するだけ。ここでは
-  // 先頭のタスクマーカーをエスケープさせないフラグ制御だけを足している
-  // (`unescapeLeadingTaskMarker` の説明を参照)。
+  /**
+   * 既定の list_item は `state.renderContent(node)` するだけ。ここでは
+   * 先頭のタスクマーカーをエスケープさせないフラグ制御
+   * (`unescapeLeadingTaskMarker` の説明を参照)と、先頭の空段落の除去を足している。
+   *
+   * **先頭の空段落を書き出してはいけない。** `listItem` のスキーマは
+   * `paragraph block*` なので、`- $$x$$` や `` - ```code``` `` のように段落以外の
+   * ブロックで始まる項目をパースすると、`createAndFill` が要求を満たすために
+   * 空の `paragraph` を先頭へ挿入する(元の Markdown には無い)。これをそのまま
+   * 書き出すと `-` + 空行 + 後続ブロック、という「空行で始まるリスト項目」に
+   * なり、CommonMark ではこれは**空の項目**なので後続ブロックが項目の外へ
+   * 飛び出す。つまり保存しただけでリストが壊れる。
+   *
+   * 空段落を飛ばすとマーカー行に直接ブロックが乗り(`state.write` の
+   * `flushClose` が走らないため)、`- $$x$$` がそのまま往復する。
+   *
+   * 対象は「先頭が空の段落」かつ「後続に他のブロックがある」場合だけ。
+   * 項目が空段落**だけ**でできている(`-` だけの空項目)場合は、それが項目の
+   * 中身そのものなので手を出さない。
+   */
   listItem: (state, node) => {
     const previous = unescapeLeadingTaskMarker;
     unescapeLeadingTaskMarker = hasLeadingTaskMarker(node);
     try {
+      const first = node.firstChild;
+      if (
+        node.childCount > 1 &&
+        first?.type.name === 'paragraph' &&
+        first.content.size === 0
+      ) {
+        node.forEach((child, _offset, index) => {
+          if (index > 0) state.render(child, node, index);
+        });
+        return;
+      }
       state.renderContent(node);
     } finally {
       unescapeLeadingTaskMarker = previous;

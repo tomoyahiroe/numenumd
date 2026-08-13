@@ -78,7 +78,12 @@ describe('serialize', () => {
  * 整形済みのフィクスチャについては `once === src` まで見て、内容が変わって
  * いないことを固定する。
  */
-const BYTE_STABLE_FIXTURES = new Set(['blocks.md', 'math.md', 'table.md']);
+const BYTE_STABLE_FIXTURES = new Set([
+  'blocks.md',
+  'list-blocks.md',
+  'math.md',
+  'table.md',
+]);
 
 /**
  * 1回通すと変わるが、**変わり方が分かっている**フィクスチャ。期待値を式で

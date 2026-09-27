@@ -1,101 +1,114 @@
-# numenumd プライバシーポリシー
+# numenumd privacy policy
 
-最終更新日: 2026-08-08
+English | [日本語](PRIVACY.ja.md)
 
-## 収集する情報
+Last updated: 2026-09-27
 
-**numenumd は、いかなる情報も収集・送信しません。** 端末の外へ出るデータは
-ありません。端末内に保存するものは「どのファイルをどこへ保存したか」の記憶
-だけで、これは保存のたびに保存先を選び直さずに済ませるためのものです
-(下記「データの保存場所」を参照)。**編集中の本文は保存しません。**
+## Information we collect
 
-具体的には、以下をいずれも行いません。
+**numenumd does not collect or send any information.** No data leaves your
+computer. The only thing it stores on your computer is a record of _which file
+was saved where_, so that you don't have to pick the save location again every
+time (see "Where data is stored" below). **It never stores the text you are
+editing.**
 
-- 個人を識別できる情報(氏名、メールアドレス、住所、年齢など)の収集
-- 健康情報・金融情報・認証情報・位置情報の収集
-- 閲覧履歴・クリック・スクロールなどの操作ログの収集
-- 編集中の Markdown ファイルの内容の送信・アップロード
-- アクセス解析、クラッシュレポート、広告識別子の利用
-- Cookie やサーバー側アカウントの作成
+Specifically, numenumd does none of the following:
 
-## 拡張機能が行う処理
+- Collect personally identifiable information (name, email address, postal
+  address, age, etc.)
+- Collect health, financial, authentication or location information
+- Collect browsing history or activity logs such as clicks and scrolling
+- Send or upload the contents of the Markdown file you are editing
+- Use analytics, crash reporting or advertising identifiers
+- Create cookies or server-side accounts
 
-numenumd は、`file://` で開かれた拡張子 `.md` のページに対してのみ動作します。
+## What the extension does
 
-1. Chrome がそのファイルを表示したテキストを、ブラウザのタブ内で読み取ります。
-2. タブ内(お使いのパソコンの中)だけで Markdown を解析し、エディタとして表示します。
-3. 保存操作をしたときに、File System Access API を通じて **あなたが選んだ
-   ローカルファイルに直接書き戻します**。
+numenumd only runs on pages opened with `file://` whose file name ends in `.md`.
 
-これらの処理はすべてブラウザのタブの中で完結します。ネットワーク通信は一切
-行いません。numenumd には運営者のサーバーが存在せず、送信先そのものがありません。
+1. It reads the text Chrome displays for that file, inside the browser tab.
+2. It parses the Markdown and shows it as an editor, entirely inside the tab (on
+   your computer).
+3. When you save, it writes **directly back to the local file you chose**
+   through the File System Access API.
 
-## データの保存場所
+All of this happens inside the browser tab. numenumd makes no network requests
+at all. There is no numenumd server, so there is nowhere to send data to.
 
-編集内容はブラウザのタブのメモリと、あなたのパソコン上の `.md` ファイルにのみ
-存在します。タブを閉じれば、保存されなかった編集内容は失われます。テーマの
-選択(Auto / Light / Dark)は保存されず、タブごとにリセットされます。
+## Where data is stored
 
-numenumd 自身がブラウザ内に保存するのは、**保存先の記憶**だけです。
+Your edits exist only in the browser tab's memory and in the `.md` file on your
+computer. If you close the tab, unsaved edits are lost. The theme choice (Auto /
+Light / Dark) is not stored and resets for every tab.
 
-- 保存に成功したファイルについて、そのファイルへの書き込み許可(ブラウザが
-  発行する参照)と最後に保存した日時を、ブラウザの IndexedDB に記録します。
-- これは、タブを開き直すたびに保存先を選び直さずに済ませるためだけに使います。
-- **本文は記録しません。** 記録されるのは「どのファイルか」であって
-  「何が書かれているか」ではありません。
-- この記録はあなたのブラウザの中だけに存在し、外部へ送信されることはありません。
-- **いつでも消せます。** エディタ右上の「⋯」メニューから「記憶した保存先を
-  消す」を選ぶと、記録した保存先をすべて削除します。ブラウザの閲覧データ消去
-  (サイトデータ)でも削除されます。
+The only thing numenumd itself stores in the browser is **the remembered save
+target**.
 
-なお、これとは別に**ブラウザ自身**が次を保持することがあります。いずれも
-numenumd から読み書きできるものではありませんが、「numenumd を使うと何も
-残らない」わけではないため挙げておきます。
+- For each file saved successfully, it records in the browser's IndexedDB the
+  permission to write to that file (a reference issued by the browser) and the
+  file's modification time right after the last save.
+- This is used only so that you don't have to pick the save location again each
+  time you reopen the tab.
+- **The text is never recorded.** The record says _which file_, not _what is
+  written in it_.
+- The record exists only in your browser and is never sent anywhere.
+- **You can delete it at any time.** In the "⋯" menu at the top right of the
+  editor, choose "記憶した保存先を消す" (forget remembered save locations) to
+  delete every remembered save target. Clearing the browser's site data also
+  deletes it.
 
-- ファイル保存ピッカーで最後に使ったフォルダ(次回そこを開くため)
-- ファイルへの書き込みを許可した記録(許可ダイアログで「毎回許可」を選んだ場合)
+Separately, **the browser itself** may keep the following. numenumd can't read
+or write either of them, but they are listed here because using numenumd does
+not leave _nothing_ behind.
 
-### この記録が他のローカルページから読まれうることについて
+- The folder you last used in the file save picker (so it opens there next
+  time)
+- The record that you allowed writing to a file (if you chose "Allow on every
+  visit" in the permission prompt)
 
-ブラウザは `file://` で開かれたページをすべて**同じひとつの保管領域**として
-扱います。numenumd の記録もそこに置かれるため、次のことが技術的に可能です。
+### Other local pages may be able to read this record
 
-> あなたがローカルに保存した**別の HTML ファイルを Chrome で開いた場合、その
-> ページから「numenumd で保存した `.md` ファイルの一覧(絶対パス)」を読み取る
-> ことができます。**
+The browser treats every page opened with `file://` as **one shared storage
+area**. numenumd's record lives there too, so the following is technically
+possible:
 
-ファイルの**中身**を読むにはそのつどあなたの許可が必要ですが、**パスの一覧に
-許可は要りません**。パスにはユーザー名やフォルダ構成が含まれることがあります。
+> If you open **another HTML file saved on your computer** in Chrome, that page
+> can read **the list of `.md` files you saved with numenumd (their absolute
+> paths)**.
 
-これは numenumd の設計上の選択ではなく、`file://` ページに共通するブラウザの
-仕様です。それでも、保存先を記録すると決めた以上は numenumd の責任範囲だと
-考えるため、ここに明記します。
+Reading a file's **contents** needs your permission each time, but **the list of
+paths does not**. Paths can include your user name and folder structure.
 
-気になる場合は次のいずれかで対処できます。
+This is how browsers treat `file://` pages in general, not a design choice of
+numenumd. But since numenumd chose to remember save targets, we consider it our
+responsibility and state it here.
 
-- エディタ右上の「⋯」→「記憶した保存先を消す」でいつでも記録を消す。
-  消したあとは、次の保存でファイル保存ピッカーが再び開きます。
-- 出所の分からない HTML ファイルを `file://` で開かない(この記録に限らず、
-  ローカルページ全般に当てはまる注意です)。
+If this concerns you, you can:
 
-## 権限について
+- Delete the record at any time from "⋯" → "記憶した保存先を消す" at the top
+  right of the editor. After that, the next save opens the file save picker
+  again.
+- Avoid opening HTML files of unknown origin via `file://` (good advice for
+  local pages in general, not just for this record).
 
-numenumd が要求する権限は、`file:///*` にマッチするページで動作するための
-ホストアクセス権限のみです。この権限は、ローカルの `.md` ファイルを読み取って
-エディタとして表示するためだけに使われます。
+## Permissions
 
-この権限は既定では無効です。Chrome の拡張機能管理画面(`chrome://extensions`)で
-「ファイルの URL へのアクセスを許可する」を利用者自身が明示的に ON にしない
-限り、numenumd はいかなるファイルにもアクセスできません。
+The only permission numenumd requests is host access for pages matching
+`file:///*`. It is used only to read local `.md` files and show them in the
+editor.
 
-## 第三者への提供
+This access is off by default. Unless you explicitly turn on **Allow access to
+file URLs** for numenumd in Chrome's extensions page (`chrome://extensions`),
+numenumd cannot access any file.
 
-収集するデータが存在しないため、第三者に提供するデータもありません。
-numenumd は外部のライブラリをネットワーク経由で読み込むこともありません
-(すべての依存コードは拡張機能のパッケージに同梱されています)。
+## Sharing with third parties
 
-## お問い合わせ
+Since no data is collected, there is no data to share with third parties.
+numenumd also doesn't load any external library over the network (all code it
+depends on is bundled in the extension package).
 
-本ポリシーに関するお問い合わせは、GitHub リポジトリの Issue にてお願いします。
+## Contact
 
-https://github.com/tomoyahiroe/numenumd
+For questions about this policy, please open an issue in the GitHub repository:
+
+https://github.com/tomoyahiroe/numenumd/issues

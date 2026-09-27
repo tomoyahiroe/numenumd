@@ -1,28 +1,39 @@
-# numenumd プロジェクトルール
+# numenumd — project rules for AI agents
 
-## コマンド
+## Commands
 
-- テスト: `npm test` / lint: `npm run lint` / 型: `npm run typecheck` / ビルド: `npm run build`
+- Test: `npm test` / Lint: `npm run lint` / Types: `npm run typecheck` / Build: `npm run build`
 
-## マージゲート(必須)
+## Principles
 
-PR をマージする前に、必ず**このセッションの文脈を共有しない新規 subagent** に
-レビューさせること。subagent には以下を依頼する:
+- **Never lose the user's Markdown.** Anything that can't be converted round-trips
+  verbatim as a raw block. See `docs/architecture.md#markdown-round-trip`.
+- **No persistent state except the remembered save target.** The edited content
+  lives only in the `.md` file and in the tab's memory. The single exception numenumd
+  itself reads and writes is the record of _which file was saved where_
+  (`FileSystemFileHandle` + the file's mtime after the last save) in IndexedDB. It exists so that a reload
+  doesn't force the user to pick the save location again. Do not add a second
+  exception. The browser also keeps state numenumd can't read (the save picker's
+  last directory via `showSaveFilePicker({ id })`, and File System Access
+  permissions), so "no persistent state at all" would be inaccurate.
+  See `docs/architecture.md#saving-and-the-remembered-save-target`.
+- **No network access.**
+- Never push directly to `main`.
+- Commit messages in English, with a conventional prefix.
 
-1. PR ブランチを checkout し `npm test && npm run lint && npm run typecheck && npm run build` を実行
-2. spec(docs/superpowers/specs/)・plan(docs/superpowers/plans/)との整合を確認
-3. テストの実在性(アサーションが本当に仕様を検証しているか)と diff 品質をレビュー
-   マージ条件は **CI グリーン + この独立レビューの承認** の両方。承認後に `gh pr merge`。
+## Merge gate (maintainer)
 
-## 原則
+Before merging a PR, the maintainer's agent must have it reviewed by a **fresh
+subagent that does not share the session's context**. Ask the subagent to:
 
-- ユーザーの Markdown を絶対に失わない(変換不能記法は rawBlock で往復)
-- **保存先の記憶以外の**永続状態を持たない。編集内容そのものは .md ファイルと
-  タブのメモリにしか置かない。**numenumd 自身が読み書きする**永続データの例外は
-  「どのファイルをどこへ保存したか」の記憶(`FileSystemFileHandle` と最終保存
-  時刻)だけで、リロードのたびに保存先を選び直す体験を避けるために IndexedDB へ
-  置く。この例外は1つに限る。なおブラウザ側にはこれとは別に、ピッカーの最終
-  ディレクトリ(`showSaveFilePicker({ id })`)と File System Access の許可が
-  残りうる ─ どちらも numenumd からは読めないが「永続状態が皆無」ではない
-  (経緯: `docs/mtg/2026-08-09-save-handle-persistence.md`)
-- main へ直接 push しない
+1. Check out the PR branch and run
+   `npm test && npm run lint && npm run typecheck && npm run build`.
+2. Check consistency with the design notes in `docs/superpowers/specs/` and
+   `docs/superpowers/plans/` **when they exist locally** (they are gitignored and
+   only on the maintainer's machine; the subagent reads them from the main checkout,
+   because worktrees don't contain ignored files).
+3. Review whether the tests are real (the assertions actually verify the spec) and
+   the quality of the diff.
+
+Merge only when **CI is green and the independent review approves**, then run
+`gh pr merge`.

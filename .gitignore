@@ -11,3 +11,7 @@ extension.zip
 # 途中で失敗したときに残ることがある。
 tools/store-screenshots/out/
 tools/store-screenshots/.chrome-profile/
+
+# Maintainer's local design notes (specs, plans, meeting notes). Not published.
+docs/mtg/
+docs/superpowers/

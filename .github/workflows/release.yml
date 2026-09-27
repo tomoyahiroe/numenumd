@@ -17,26 +17,24 @@ jobs:
           test "$TAG" = "$VER" || { echo "tag $TAG != package version $VER"; exit 1; }
       - run: npm test
       - run: npm run build
-      - run: cd dist && zip -r ../extension.zip .
+      - run: cd dist && zip -r "../numenumd-${GITHUB_REF_NAME}.zip" .
+      - name: Verify manifest.json is at the zip root
+        run: unzip -Z1 "numenumd-${GITHUB_REF_NAME}.zip" | grep -qx 'manifest.json'
       - uses: actions/upload-artifact@v4
-        with: { name: extension-zip, path: extension.zip }
-  publish:
+        with: { name: extension-zip, path: 'numenumd-*.zip' }
+  release:
     needs: build
     runs-on: ubuntu-latest
-    env:
-      CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+    permissions:
+      contents: write
     steps:
-      - name: Skip if secrets not configured
-        if: env.CWS_CLIENT_ID == ''
-        run: echo "CWS secrets not set — skipping publish" && exit 0
       - uses: actions/download-artifact@v4
-        if: env.CWS_CLIENT_ID != ''
         with: { name: extension-zip }
-      - name: Upload & publish to Chrome Web Store
-        if: env.CWS_CLIENT_ID != ''
+      - name: Create GitHub Release with the extension zip
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          npx chrome-webstore-upload-cli@3 upload --source extension.zip --auto-publish \
-            --extension-id "${{ secrets.CWS_EXTENSION_ID }}" \
-            --client-id "${{ secrets.CWS_CLIENT_ID }}" \
-            --client-secret "${{ secrets.CWS_CLIENT_SECRET }}" \
-            --refresh-token "${{ secrets.CWS_REFRESH_TOKEN }}"
+          gh release create "$GITHUB_REF_NAME" "numenumd-${GITHUB_REF_NAME}.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

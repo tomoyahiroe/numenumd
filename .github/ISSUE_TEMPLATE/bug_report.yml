@@ -1,0 +1,31 @@
+name: Bug report
+description: Something doesn't work or your Markdown was changed unexpectedly
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: markdown
+    attributes:
+      label: Sample Markdown
+      description: The smallest `.md` content that reproduces the problem. Remove anything private.
+      render: markdown
+  - type: input
+    id: version
+    attributes:
+      label: numenumd version
+      description: Shown on the extension's card in chrome://extensions.
+    validations:
+      required: true
+  - type: input
+    id: chrome
+    attributes:
+      label: Chrome version and OS
+      placeholder: e.g. Chrome 140, macOS 26
+    validations:
+      required: true

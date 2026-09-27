@@ -1,22 +1,23 @@
 #!/usr/bin/env node
 /**
- * Chrome ウェブストア掲載用の画像を docs/store-assets/ に生成する。
+ * Generates the README screenshots into docs/images/.
  *
- *   npm run build:store-assets
+ *   npm run build:screenshots
  *
- * 手順は「ハーネスをビルド → ローカルで配信 → headless Chrome(CDP)で撮影」。
+ * Steps: build the harness → serve it locally → capture it with headless Chrome (CDP).
  *
- * なぜ拡張機能そのものを撮らないのか:
- * numenumd は `file:///*` の content script なので、実際に動かすには
- * chrome://extensions の「ファイルの URL へのアクセスを許可する」を人間が手で
- * ON にする必要があり、headless Chrome では有効化できない。そこで同じ
- * src/content/App を普通のページとしてマウントしたハーネスを撮る。描画される
- * UI・CSS は拡張機能とまったく同じものになる。
+ * Why not capture the extension itself:
+ * numenumd is a content script for `file:///*`, so running it for real needs a
+ * person to turn on "Allow access to file URLs" in chrome://extensions, which
+ * headless Chrome can't do. Instead we capture a harness that mounts the same
+ * src/content/App as an ordinary page. The UI and CSS it renders are exactly the
+ * extension's.
  *
- * なぜ CDP なのか(`--screenshot` ではなく):
- *  - headless Chrome の prefers-color-scheme 既定は dark で、CLI からは light を
- *    撮れない。Emulation.setEmulatedMedia なら light/dark を確実に指定できる。
- *  - スラッシュメニューのような対話状態を Input.* で作ってから撮影できる。
+ * Why CDP (and not `--screenshot`):
+ *  - Headless Chrome defaults prefers-color-scheme to dark, and the CLI can't
+ *    capture light. Emulation.setEmulatedMedia sets light/dark reliably.
+ *  - Interactive states such as the slash menu can be created with Input.* before
+ *    capturing.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -26,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
-const OUT_DIR = resolve(ROOT, 'docs/store-assets');
+const OUT_DIR = resolve(ROOT, 'docs/images');
 const BUILD_DIR = resolve(HERE, 'out');
 const CHROME =
   process.env.CHROME_PATH ??
@@ -34,8 +35,7 @@ const CHROME =
 const PORT = Number(process.env.SHOT_PORT ?? 8899);
 const DEBUG_PORT = Number(process.env.SHOT_DEBUG_PORT ?? 9333);
 
-// ウェブストアのスクリーンショットは 1280x800 か 640x400 のみ。小さいプロモ
-// タイルは 440x280。ここから外れるとアップロード時に弾かれる。
+// Screenshot size (16:10), large enough to stay sharp in the README.
 const SHOT = { w: 1280, h: 800 };
 
 /** 最後のリスト項目の行末をクリックする式(空段落は座標を決め打ちできない)。 */
@@ -80,14 +80,6 @@ const SPECS = [
     path: `/index.html?doc=math`,
     theme: 'dark',
     ...SHOT,
-  },
-  {
-    name: 'promo-small-tile',
-    path: '/promo.html',
-    theme: 'light',
-    w: 440,
-    h: 280,
-    wait: 1200,
   },
 ];
 
@@ -239,14 +231,14 @@ async function capture(cdp, spec) {
   );
   await cdp.send('Target.closeTarget', { targetId });
   console.log(
-    `generated docs/store-assets/${spec.name}.png (${spec.w}x${spec.h}, ${spec.theme})`,
+    `generated docs/images/${spec.name}.png (${spec.w}x${spec.h}, ${spec.theme})`,
   );
 }
 
 async function main() {
   const build = spawnSync(
     'npx',
-    ['vite', 'build', '--config', 'tools/store-screenshots/vite.config.ts'],
+    ['vite', 'build', '--config', 'tools/screenshots/vite.config.ts'],
     { cwd: ROOT, stdio: 'inherit' },
   );
   if (build.status !== 0) process.exit(build.status ?? 1);
@@ -257,7 +249,13 @@ async function main() {
   try {
     for (const spec of SPECS) await capture(cdp, spec);
   } finally {
-    chrome.kill();
+    // Wait for Chrome to exit before deleting its profile: kill() only sends the
+    // signal, and Chrome keeps writing to .chrome-profile while shutting down.
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      const exited = new Promise((done) => chrome.once('exit', done));
+      chrome.kill();
+      await exited;
+    }
     server.close();
     await rm(BUILD_DIR, { recursive: true, force: true });
     await rm(resolve(HERE, '.chrome-profile'), {

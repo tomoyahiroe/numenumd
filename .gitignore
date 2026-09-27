@@ -4,8 +4,8 @@ dist/
 .claude/worktrees/
 .superpowers/
 
-# ストアへ手動アップロードするときに作る zip(docs/publishing.md 参照)
-extension.zip
+# Release zip built by .github/workflows/release.yml (if you reproduce it locally)
+numenumd-*.zip
 
 # Screenshot harness scratch output. capture.mjs deletes it, but a failed run can leave it behind.
 tools/screenshots/out/

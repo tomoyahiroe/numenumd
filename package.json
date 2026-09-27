@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/check-dist-encoding.mjs",
     "build:icons": "node scripts/build-icons.mjs",
-    "build:store-assets": "node tools/store-screenshots/capture.mjs",
+    "build:screenshots": "node tools/screenshots/capture.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src",

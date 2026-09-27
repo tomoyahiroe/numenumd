@@ -7,10 +7,9 @@ dist/
 # ストアへ手動アップロードするときに作る zip(docs/publishing.md 参照)
 extension.zip
 
-# 掲載画像ハーネスの中間生成物。撮影後に capture.mjs が消すが、
-# 途中で失敗したときに残ることがある。
-tools/store-screenshots/out/
-tools/store-screenshots/.chrome-profile/
+# Screenshot harness scratch output. capture.mjs deletes it, but a failed run can leave it behind.
+tools/screenshots/out/
+tools/screenshots/.chrome-profile/
 
 # Maintainer's local design notes (specs, plans, meeting notes). Not published.
 docs/mtg/

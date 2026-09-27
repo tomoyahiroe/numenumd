@@ -1,148 +1,128 @@
 # numenumd
 
-ローカルディスク上の `.md` ファイルを Chrome で開くと、そのまま Notion 風の
-WYSIWYG エディタとして編集できる Manifest V3 拡張機能。サーバーやアカウントは
-不要で、状態はブラウザのタブと `.md` ファイル自身にしか持たない。編集内容は
-Prettier で整形した Markdown として、開いたファイルへ直接上書き保存される。
+English | [日本語](README.ja.md)
 
-## 開発コマンド
+numenumd is a Chrome extension that turns local Markdown files into a
+Notion-style WYSIWYG editor. Open a `.md` file from your disk in Chrome and edit
+it in place: no server, no account, nothing uploaded. When you save, numenumd
+writes cleanly formatted Markdown back to the same file, and anything it can't
+display as rich text is kept exactly as you wrote it.
+
+![numenumd editing a Markdown file](docs/images/screenshot-2-blocks.png)
+
+## Install
+
+numenumd is not published on the Chrome Web Store. Install it as an unpacked
+extension, either from a release or from source.
+
+### From a release (no Node.js needed)
+
+1. Download `numenumd-vX.Y.Z.zip` from
+   [Releases](https://github.com/tomoyahiroe/numenumd/releases) and unzip it.
+2. Open `chrome://extensions` and turn on **Developer mode** (top right).
+3. Click **Load unpacked** and select the unzipped folder.
+4. Open numenumd's **Details** and turn on **Allow access to file URLs**.
+5. Open any `.md` file in Chrome (drag it into a tab, or open a `file://` URL).
+
+### From source
+
+Requires Node.js 22 and npm.
 
 ```bash
-npm install       # 依存関係のインストール(初回のみ)
-npm run dev       # Vite 開発サーバー(HMR 付きでの拡張機能開発)
-npm run build     # 型チェック(tsc --noEmit) + 本番ビルド → dist/
-npm test          # vitest によるテスト一括実行
-npm run test:watch  # vitest をウォッチモードで実行
-npm run lint      # eslint src
-npm run typecheck # tsc --noEmit
-npm run format    # prettier --write .(*.ts/tsx/css/md/json/yml 全体)
-
-npm run build:icons        # assets/icon.svg → public/icons/*.png(要 librsvg/ImageMagick)
-npm run build:store-assets # ストア掲載用の画像を docs/store-assets/ に生成
+git clone https://github.com/tomoyahiroe/numenumd.git
+cd numenumd
+npm install
+npm run build
 ```
 
-`build:icons` と `build:store-assets` は生成物をコミットする前提の手動コマンドで、
-`npm run build` や CI からは呼ばれない。
+Then follow steps 2–5 above, selecting the generated `dist/` folder in step 3.
 
-コミット時は husky + lint-staged により、ステージされた `*.ts`/`*.tsx` に対する
-`eslint --fix` + `prettier --write`、`*.css`/`*.md`/`*.json`/`*.yml` に対する
-`prettier --write` が自動実行される。
+**Why step 4 matters:** numenumd runs on `file://` pages, and Chrome blocks
+extensions from them by default. Without **Allow access to file URLs**, your
+`.md` file stays as plain text.
 
-## インストール(開発版を手元で読み込む)
+## Features
 
-1. `npm run build` を実行し、`dist/` にビルド成果物を生成する。
-2. Chrome で `chrome://extensions` を開く。
-3. 右上の「デベロッパーモード」トグルを ON にする。
-4. 「パッケージ化されていない拡張機能を読み込む」ボタンをクリックし、生成された
-   `dist/` フォルダを選択する。
-5. 読み込まれた「numenumd」のカードで「詳細」を開き、下部にある
-   「ファイルの URL へのアクセスを許可する」のトグルを ON にする。
-   - numenumd は `file:///*` にマッチする content script として実装されており、
-     この設定が OFF のままだとローカルファイル上で一切動作しない。
-6. 任意の `.md` ファイルを `file://` で開くと、numenumd の WYSIWYG エディタに
-   置き換わる(`.md` 以外の `file://` ページは素通しされ、何も変わらない)。
+- **Markdown shortcuts as you type**: `# ` to `###### ` for headings, `- `,
+  `1. `, `[] ` / `[x] ` for lists and to-dos, `> ` for quotes, ` ``` ` for code
+  blocks, and `$$` followed by Enter for a math block.
+- **Slash menu**: type `/` to insert headings 1–3, bulleted / numbered / to-do
+  lists, quotes, code blocks, tables and math blocks. Filter by typing (English
+  keywords, plus Japanese keywords such as 見出し or 数式).
+- **Math**: inline `$…$` and block `$$…$$` rendered with KaTeX. Click a math block
+  to edit its LaTeX; press `Escape` or `Cmd/Ctrl+Enter` to finish. A `$` in
+  ordinary text (like `$5 and $10`) is not mistaken for math.
+- **Tables** (GFM pipe tables): insert with `/table`, move between cells with
+  `Tab` (a new row is added after the last cell), add rows and columns with the
+  `+` buttons, select a row or column from its grip and delete it with
+  `Backspace`. Column alignment (`:---:` etc.) is preserved.
+- **Your Markdown is preserved**: raw HTML, link reference definitions, footnote
+  definitions and anything else the editor can't show as rich text appear as raw
+  Markdown blocks and are saved unchanged. YAML frontmatter is shown in a
+  collapsible block and written back exactly as it was.
+- **Saving**: the first `Cmd/Ctrl+S` opens the save dialog (with the file name
+  filled in); after that, saving is silent. numenumd remembers where each file was
+  saved, so you don't have to choose again after reloading the tab. Only the
+  location is remembered, never the content, and you can clear it from the "⋯"
+  menu. `Cmd/Ctrl+S` works even when the focus is outside the editor.
+- **Safe saving**: if another app changed the file since your last save,
+  numenumd asks before overwriting. Closing a tab with unsaved changes shows a
+  warning, and the tab title starts with `●` while there are unsaved changes.
+- **Consistent formatting**: saved files are formatted with Prettier, and saving
+  again without changes produces an identical file.
+- **Theme**: the header button cycles Auto (follows your OS) → Light → Dark. The
+  choice isn't stored; each tab starts at Auto.
 
-拡張機能を更新した場合は、`npm run build` の後に `chrome://extensions` の
-numenumd カードにある更新(circular arrow)アイコンを押すか、いったん削除して
-読み込み直す。
+## Keyboard shortcuts
 
-## リリース手順
+`Cmd` on macOS, `Ctrl` on Windows and Linux.
 
-1. `package.json` の `"version"` を更新する。
-2. 変更をコミットし、`vX.Y.Z`(`package.json` のバージョンと一致させる)形式の
-   git タグを作成して push する。
+| Shortcut                                   | Action                      |
+| ------------------------------------------ | --------------------------- |
+| `Cmd/Ctrl+S`                               | Save                        |
+| `Cmd/Ctrl+B`                               | Bold                        |
+| `Cmd/Ctrl+I`                               | Italic                      |
+| `Cmd/Ctrl+E`                               | Inline code                 |
+| `Cmd/Ctrl+Shift+X` (or `Cmd/Ctrl+Shift+S`) | Strikethrough               |
+| `Cmd/Ctrl+K`                               | Link                        |
+| `Cmd/Ctrl+Alt+1` … `Cmd/Ctrl+Alt+6`        | Heading 1–6                 |
+| `/`                                        | Open the slash menu         |
+| `Escape` or `Cmd/Ctrl+Enter`               | Finish editing a math block |
 
-   ```bash
-   git tag v1.2.3
-   git push origin v1.2.3
-   ```
+## Known limitations
 
-3. push をトリガーに GitHub Actions の `Release` ワークフロー(`.github/workflows/release.yml`)
-   が起動する。
-   - タグ名と `package.json` の `version` が一致するかを検証してから
-     `npm test` → `npm run build` を実行し、`dist/` を zip 化して
-     アーティファクトとして保存する。
-   - 続く公開ジョブは、Chrome Web Store 連携用の GitHub Secrets
-     (`CWS_CLIENT_ID` など)が設定されていれば `chrome-webstore-upload-cli` で
-     Chrome Web Store へ自動アップロード・公開する。
-   - **Secrets が未設定の場合は公開ジョブが自動的にスキップされる**(ビルドと
-     zip 化までは常に実行される)ため、ストア未登録の段階でもリリースタグの
-     push 自体は安全に行える。
-   - Secrets のセットアップ手順(Chrome Web Store デベロッパー登録、OAuth
-     クライアントの作成、GitHub Secrets への登録項目)は
-     [`docs/publishing.md`](docs/publishing.md) を参照。
+- The editor's messages and menus are in Japanese (the slash menu items are in
+  English).
+- To-do list items display the checkbox and the text on separate lines.
+- `$…$` inside inline code is displayed as rendered math. This is display only:
+  the saved Markdown is unchanged.
+- Merged table cells are not supported, because GFM pipe tables have no syntax for
+  them. HTML tables using `rowspan` / `colspan` are kept as raw Markdown blocks.
+- A table cell can hold only one line of inline content. Line breaks, lists and
+  code blocks inside cells are disabled because GFM cells can't represent them.
+- A table whose cells contain a code span with a pipe (``| `a|b` |``) is kept as
+  a raw Markdown block, because markdown-it splits the cells before parsing
+  inline code.
+- Reference-style links (`[text][ref]`) are expanded to inline links when saved,
+  and the `[ref]: url` definition is left in place unused. They display the same,
+  but the syntax changes.
+- Square brackets in ordinary text are escaped when saved (`array[0]` becomes
+  `array\[0\]`). The text displays the same and reloading is stable, but the
+  characters in the file change.
 
-## ストアへの公開
+## Privacy
 
-初回公開(デベロッパー登録 → アイテム作成 → 審査提出)と CD 有効化までの
-手順は [`docs/publishing.md`](docs/publishing.md)、ダッシュボードに貼り付ける
-掲載文面は [`docs/store-listing.md`](docs/store-listing.md) にまとめてある。
-掲載画像は `docs/store-assets/` にあり、`npm run build:store-assets` で
-再生成できる(→ [`tools/store-screenshots/README.md`](tools/store-screenshots/README.md))。
+numenumd collects nothing and makes no network requests. The only thing it stores
+is where you saved each file (in your browser's IndexedDB), never what you wrote.
+See [PRIVACY.md](PRIVACY.md) for details, including what other local pages can
+see.
 
-プライバシーポリシーは [`PRIVACY.md`](PRIVACY.md)。numenumd は情報を一切
-収集・送信しない。
+## Contributing
 
-## 主な機能
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
+guidelines, and [docs/architecture.md](docs/architecture.md) for how numenumd
+works.
 
-- `# `〜`###### `、`- `、`1. `、`[] `/`[x] `、`> `、` ``` `、`$$` + Enter といった
-  入力オートフォーマット。
-- `Cmd+B`(太字)/`Cmd+I`(斜体)/`Cmd+E`(インラインコード)/`Cmd+Shift+X`
-  (取り消し線。StarterKit 既定の `Cmd+Shift+S` も併用可)/`Cmd+K`(リンク)/
-  `Cmd+Alt+1`〜`Cmd+Alt+6`(見出し1〜6)/`Cmd+S`(保存)。
-- `/` から始まるスラッシュメニュー(Heading 1〜3、Bulleted/Numbered/To-do list、
-  Quote、Code block、Math block。日本語キーワードでの絞り込みにも対応)。
-- インライン数式 `$…$`(Pandoc 方式のペア判定ヒューリスティックで地の文中の `$`
-  記号と区別)とブロック数式 `$$…$$` の KaTeX レンダリング、クリックでの編集。
-  数式ブロックの LaTeX 編集中は `Escape` または `Cmd+Enter` で確定し、
-  カーソルが直後の段落へ移動する(段落が無ければ自動で作られる)。
-- テーマ切り替え: ヘッダ右上のボタンで Auto(OS 設定に追従)/ Light / Dark を
-  循環。永続化はしない設計のため、選択はタブごとにリセットされる。
-- テーブル(GFM パイプテーブル)の WYSIWYG 編集。`/table` で挿入、Tab でセル移動
-  (最終セルで行追加)、表にカーソルがある間だけ出る `+` ボタンで行/列を追加、
-  上端・左端のグリップ帯をクリックして選択し Backspace で行/列を削除。揃え記法
-  (`:---:` など)は往復で保持する。
-  ただし**ヘッダの列数を超えるセルを持つ表**は、GFM がその超過セルを黙って
-  捨ててしまうため編集対象にせず、下記の生 Markdown ブロックとして原文のまま
-  保全する。
-- 生 HTML・リンク参照定義など WYSIWYG に変換できない記法は、内容を
-  一切変更せず生 Markdown ブロックとして保全して表示する。
-- frontmatter(先頭の `---` 区切り YAML)は折りたたみ UI で表示し、保存時も
-  Prettier 整形の対象外として verbatim のまま書き戻す。
-- 保存はファイルごとに初回だけ OS のファイル保存ピッカーが開き(ファイル名は
-  プリセット済み)、以降は無音で上書き保存する。保存先はブラウザ内に記憶する
-  ため、**タブをリロードしても選び直す必要はない**(記憶するのは保存先だけで
-  本文は保存しない。エディタ右上の「⋯」メニューからいつでも消せる。この記録は
-  `file://` ページ共通の保管領域に置かれるため、ローカルで開いた別のページから
-  保存先の一覧を読めてしまう ─ 詳細は [PRIVACY.md](PRIVACY.md))。エディタ外にフォーカスがある
-  状態でも `Cmd+S` を横取りする。外部アプリで同じファイルが変更されていた場合は
-  上書き前に競合確認ダイアログを出す。
+## License
 
-詳しい設計は
-[`docs/superpowers/specs/2026-08-01-numenumd-design.md`](docs/superpowers/specs/2026-08-01-numenumd-design.md)、
-リリース前の手動確認手順は [`docs/smoke-checklist.md`](docs/smoke-checklist.md)
-を参照。
-
-## 既知の制限 / TODO
-
-- ToDo リスト(`- [ ]` / `- [x]`)の表示が崩れる。`ul[data-type='taskList']` の
-  `li` に flex レイアウトが無いため、チェックボックスと本文が別の行に分かれる。
-- インラインコード内の `$…$` が数式として描画されてしまう(表示のみの問題で、
-  保存される Markdown は元のまま保たれる)。
-- Vim 風モーダル編集などの Phase 2/3 機能は MVP のスコープ外(`KeyRouter` は
-  将来の拡張を見越した設計のみ済み)。
-- 表のセル結合は非対応。GFM のパイプテーブルにセル結合の記法が存在しないため、
-  結合コマンドを提供していない(HTML テーブルで書かれた `rowspan` / `colspan` は
-  生 Markdown ブロックとして保全される)。
-- 表のセルに書けるのは1段落分のインラインのみ。セル内での改行(`Shift+Enter`)や
-  箇条書き・コードブロックは、GFM のセルが表現できないため無効にしている。
-- セル内のコードスパンにパイプを含む表(``| `a|b` |``)は、markdown-it が
-  インライン解析より前にセルを切る仕様上、超過セルのある表として扱われ生
-  Markdown ブロックになる。
-- 参照リンク(`[text][ref]`)が保存時にインライン形式へ展開され、`[ref]: url` の
-  定義行が使われないまま残る。表示は変わらないが、記法は書き換わる。
-- 地の文の角括弧が保存時にエスケープされる(`array[0]` → `array\[0\]`)。
-  表示は元のままで、再度読み込んでも内容は変わらない(往復は安定している)が、
-  ファイル上の文字は書き換わる。リンクにならない `[` だけを見分けようとすると
-  誤判定で地の文が意図しないリンクに化ける危険があるため、現状は安全側に倒して
-  一律エスケープしている。
+MIT. See [LICENSE](LICENSE).

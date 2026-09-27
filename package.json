@@ -1,7 +1,6 @@
 {
   "name": "numenumd-mvp",
   "version": "0.3.0",
-  "private": true,
   "description": "Notion-like WYSIWYG editor for local Markdown files",
   "type": "module",
   "scripts": {
@@ -25,7 +24,15 @@
       "prettier --write"
     ]
   },
-  "license": "ISC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomoyahiroe/numenumd.git"
+  },
+  "homepage": "https://github.com/tomoyahiroe/numenumd#readme",
+  "bugs": {
+    "url": "https://github.com/tomoyahiroe/numenumd/issues"
+  },
   "dependencies": {
     "@tiptap/core": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",

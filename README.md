@@ -62,7 +62,8 @@ extensions from them by default. Without **Allow access to file URLs**, your
   collapsible block and written back exactly as it was.
 - **Saving**: the first `Cmd/Ctrl+S` opens the save dialog (with the file name
   filled in); after that, saving is silent. numenumd remembers where each file was
-  saved, so you don't have to choose again after reloading the tab. Only the
+  saved, so you don't have to choose again after reloading the tab (Chrome may ask
+  you to allow editing the file again). Only the
   location is remembered, never the content, and you can clear it from the "⋯"
   menu. `Cmd/Ctrl+S` works even when the focus is outside the editor.
 - **Safe saving**: if another app changed the file since your last save,
@@ -84,7 +85,7 @@ extensions from them by default. Without **Allow access to file URLs**, your
 | `Cmd/Ctrl+I`                               | Italic                      |
 | `Cmd/Ctrl+E`                               | Inline code                 |
 | `Cmd/Ctrl+Shift+X` (or `Cmd/Ctrl+Shift+S`) | Strikethrough               |
-| `Cmd/Ctrl+K`                               | Link                        |
+| `Cmd/Ctrl+K`                               | Link (on selected text)     |
 | `Cmd/Ctrl+Alt+1` … `Cmd/Ctrl+Alt+6`        | Heading 1–6                 |
 | `/`                                        | Open the slash menu         |
 | `Escape` or `Cmd/Ctrl+Enter`               | Finish editing a math block |
@@ -100,9 +101,11 @@ extensions from them by default. Without **Allow access to file URLs**, your
   them. HTML tables using `rowspan` / `colspan` are kept as raw Markdown blocks.
 - A table cell can hold only one line of inline content. Line breaks, lists and
   code blocks inside cells are disabled because GFM cells can't represent them.
-- A table whose cells contain a code span with a pipe (``| `a|b` |``) is kept as
-  a raw Markdown block, because markdown-it splits the cells before parsing
-  inline code.
+- A pipe inside a code span in a table cell (``| `a|b` |``) splits the cell,
+  because markdown-it splits cells before parsing inline code. If that gives a row
+  more cells than the header, the table is kept as a raw Markdown block;
+  otherwise it becomes an editable table, and saving escapes the backticks
+  (``\`a | b\` ``), which changes the notation.
 - Reference-style links (`[text][ref]`) are expanded to inline links when saved,
   and the `[ref]: url` definition is left in place unused. They display the same,
   but the syntax changes.

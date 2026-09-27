@@ -101,8 +101,9 @@ extension:
    inserts a 3×3 table; the saved file is a valid pipe table with alignment kept.
 8. **Raw blocks**: a table with more cells than its header, and raw HTML, show as
    raw blocks, can be edited as text, and are saved without losing anything.
-9. **Frontmatter**: shown collapsed, can be expanded and edited, and is saved byte
-   for byte when only the body changes.
+9. **Frontmatter**: shown expanded in a collapsible "Front matter" block, can be
+   collapsed, opens a text editor when clicked, and is saved byte for byte when
+   only the body changes.
 10. **First save and later saves**: the first `Cmd/Ctrl+S` opens the save dialog
     with the file name filled in; later saves are silent (only a toast).
 11. **Remembered save target**: after reloading the tab, saving asks for

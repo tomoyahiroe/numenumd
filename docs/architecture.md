@@ -153,10 +153,11 @@ starts at Auto.
 ## Testing
 
 - Vitest with jsdom. Tests live next to the code as `*.test.ts` / `*.test.tsx`.
-- Round-trip tests (`src/markdown/roundtrip.test.ts`) run the fixtures in
-  `tests/fixtures/` through parse → serialize (the output must equal the input)
-  and through the full format pipeline (golden output, and formatting twice must
-  give the same result). They are the safety net for the "never lose the user's Markdown" rule:
+- Round-trip tests (`src/markdown/roundtrip.test.ts`): Inline cases check parse
+  → serialize equality. The fixtures in `tests/fixtures/` run through the full
+  format pipeline: most must match golden output byte for byte, `basic.md` and
+  `edge.md` are checked for idempotency (formatting twice gives the same result),
+  and known deviations are pinned explicitly. They are the safety net for the "never lose the user's Markdown" rule:
   any parser or serializer change should come with a fixture.
 - `npm run build` also runs `scripts/check-dist-encoding.mjs`, which fails the
   build if any bundled JavaScript contains characters Chrome refuses to load in a

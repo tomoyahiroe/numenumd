@@ -110,6 +110,25 @@ describe('resolveImageDest', () => {
     expect(resolveImageDest(dest, PAGE)).toEqual({ kind: 'unsupported' });
   });
 
+  // The browser loads the *parsed* URL: the URL parser drops leading C0
+  // controls and removes tabs/newlines anywhere, so classification must look
+  // at the parsed URL, not the raw text.
+  it.each([
+    ['ht\ttps://evil.example/t.png'],
+    ['\u0001https://evil.example/c.png'],
+    ['file://evil.example/share/w.png'],
+    ['/\\evil.example/share/v.png'],
+    ['\u0000//e.x/a'],
+  ])('%j is remote after URL parsing', (dest) => {
+    expect(resolveImageDest(dest, PAGE)).toEqual({ kind: 'remote' });
+  });
+
+  it('a scheme hidden with a tab is unsupported', () => {
+    expect(resolveImageDest('jav\tascript:x', PAGE)).toEqual({
+      kind: 'unsupported',
+    });
+  });
+
   it('treats relative paths as unsupported when the page is not a file: URL', () => {
     expect(resolveImageDest('img/cat.png', 'http://localhost/doc.md')).toEqual({
       kind: 'unsupported',

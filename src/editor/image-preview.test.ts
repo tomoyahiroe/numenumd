@@ -80,6 +80,18 @@ describe('ImagePreview', () => {
     expect(hidden()).toBe(0);
   });
 
+  it('never creates an img for a remote URL hidden with a tab, a control character or a file host', () => {
+    make(
+      'A ![t](<ht\ttps://evil.example/t.png>) B ![c](\u0001https://evil.example/c.png) C ![u](file://evil.example/s/u.png) x',
+    );
+    expect(dom().querySelectorAll('img')).toHaveLength(0);
+    expect(badges()).toEqual([
+      'remote image not loaded',
+      'remote image not loaded',
+      'remote image not loaded',
+    ]);
+  });
+
   it('resolves a reference image through its definition', () => {
     make('See ![a][Pic] end\n\n[pic]: pics/a.png "T"\n');
     editor!.commands.setTextSelection(posOf('end') + 2);

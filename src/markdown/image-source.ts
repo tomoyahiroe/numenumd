@@ -102,33 +102,50 @@ export function parseRefDefinitions(
   return defs;
 }
 
-const SCHEME = /^([A-Za-z][A-Za-z0-9+.-]*):/;
+/**
+ * Classifies a URL *as the browser will load it*. The URL parser drops leading
+ * C0 controls and removes tabs/newlines anywhere, so checking the raw text
+ * (e.g. for an `http` prefix) can be bypassed (`ht\ttps://…`). Only the parsed
+ * URL is trustworthy.
+ */
+function classify(url: URL): ResolvedImage {
+  switch (url.protocol) {
+    case 'http:':
+    case 'https:':
+      return { kind: 'remote' };
+    case 'file:':
+      // `file://host/…` is a network share (UNC/SMB on Windows): remote.
+      return url.host === ''
+        ? { kind: 'local', url: url.href }
+        : { kind: 'remote' };
+    case 'data:':
+      return /^data:image\//i.test(url.href)
+        ? { kind: 'local', url: url.href }
+        : { kind: 'unsupported' };
+    default:
+      return { kind: 'unsupported' };
+  }
+}
 
 export function resolveImageDest(dest: string, pageUrl: string): ResolvedImage {
   const t = dest.trim();
   if (t === '') return { kind: 'unsupported' };
   try {
-    if (t.startsWith('//')) return { kind: 'remote' };
+    // Windows drive paths would otherwise parse as a one-letter scheme.
     if (/^[A-Za-z]:[\\/]/.test(t)) {
-      return {
-        kind: 'local',
-        url: new URL('file:///' + t.replace(/\\/g, '/')).href,
-      };
+      return classify(new URL('file:///' + t.replace(/\\/g, '/')));
     }
-    const scheme = SCHEME.exec(t)?.[1]?.toLowerCase();
-    if (scheme !== undefined) {
-      if (scheme === 'http' || scheme === 'https') return { kind: 'remote' };
-      if (scheme === 'file') return { kind: 'local', url: new URL(t).href };
-      if (scheme === 'data' && /^data:image\//i.test(t)) {
-        return { kind: 'local', url: t };
-      }
-      return { kind: 'unsupported' };
+    let absolute: URL | null = null;
+    try {
+      absolute = new URL(t);
+    } catch {
+      // Not an absolute URL: a path, resolved below.
     }
-    if (t.startsWith('/')) {
-      return { kind: 'local', url: new URL(t, 'file:///').href };
-    }
-    if (new URL(pageUrl).protocol !== 'file:') return { kind: 'unsupported' };
-    return { kind: 'local', url: new URL(t, pageUrl).href };
+    if (absolute) return classify(absolute);
+    if (/^[/\\]/.test(t)) return classify(new URL(t, 'file:///'));
+    const base = new URL(pageUrl);
+    if (base.protocol !== 'file:') return { kind: 'unsupported' };
+    return classify(new URL(t, base));
   } catch {
     return { kind: 'unsupported' };
   }

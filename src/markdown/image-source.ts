@@ -114,8 +114,10 @@ function classify(url: URL): ResolvedImage {
     case 'https:':
       return { kind: 'remote' };
     case 'file:':
-      // `file://host/…` is a network share (UNC/SMB on Windows): remote.
-      return url.host === ''
+      // `file://host/…` is a network share (UNC/SMB on Windows): remote. So is
+      // `file:////host/…`, which some parsers give an empty host but Windows
+      // may still open as a UNC path.
+      return url.host === '' && !url.pathname.startsWith('//')
         ? { kind: 'local', url: url.href }
         : { kind: 'remote' };
     case 'data:':

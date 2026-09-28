@@ -119,6 +119,9 @@ describe('resolveImageDest', () => {
     ['file://evil.example/share/w.png'],
     ['/\\evil.example/share/v.png'],
     ['\u0000//e.x/a'],
+    ['////host/share/x.png'],
+    ['file:////host/share/x.png'],
+    ['/..//host/share/x.png'],
   ])('%j is remote after URL parsing', (dest) => {
     expect(resolveImageDest(dest, PAGE)).toEqual({ kind: 'remote' });
   });

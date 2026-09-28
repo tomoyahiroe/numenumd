@@ -154,3 +154,15 @@ export function findVerbatimSpans(str: string): Array<[number, number]> {
   }
   return spans;
 }
+
+/**
+ * Image spans only (`![…](…)` / `![…][…]`), found with the same scan as
+ * `findVerbatimSpans`, so exactly the spans the parser keeps verbatim are
+ * reported and image-like text inside `$…$` math is skipped. Used by the
+ * editor's image preview.
+ */
+export function findImageSpans(str: string): Array<[number, number]> {
+  return findVerbatimSpans(str).filter(
+    ([start]) => str.charCodeAt(start) === BANG,
+  );
+}

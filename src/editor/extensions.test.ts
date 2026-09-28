@@ -1,6 +1,10 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildExtensions } from './extensions';
+import { parseMarkdown } from '../markdown/parse';
+import { serializeMarkdown } from '../markdown/serialize';
 
 // `Editor` は破棄しないと内部の DOM 監視タイマーが動き続け、次のテスト
 // ファイルへ環境が切り替わるタイミングで `document is not defined` の
@@ -139,5 +143,33 @@ describe('buildExtensions', () => {
       type: 'frontmatter',
       attrs: { content: 'title: Hello' },
     });
+  });
+});
+
+describe('image preview registration', () => {
+  it('is part of buildExtensions()', () => {
+    expect(buildExtensions().map((e) => e.name)).toContain(
+      'numenumdImagePreview',
+    );
+  });
+
+  it('does not change the serialized Markdown of the image fixture', () => {
+    const md = readFileSync(
+      join(__dirname, '../../tests/fixtures/images-footnotes.md'),
+      'utf8',
+    );
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: buildExtensions(),
+      content: parseMarkdown(md),
+    });
+    createdEditors.push(editor);
+    const docSize = editor.state.doc.content.size;
+    for (const pos of [1, Math.floor(docSize / 2), docSize - 1]) {
+      editor.commands.setTextSelection(pos);
+    }
+    expect(serializeMarkdown(editor.getJSON())).toBe(
+      serializeMarkdown(parseMarkdown(md)),
+    );
   });
 });

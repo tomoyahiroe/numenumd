@@ -417,3 +417,30 @@ body {
   padding: 6px 10px;
   color: var(--nd-muted);
 }
+
+/* Image preview (src/editor/image-preview.ts). The source text stays in the
+   DOM so the cursor can move into it; it is only collapsed out of sight. */
+.numenumd-image-source--hidden {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+}
+.numenumd-image {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+.numenumd-image-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border: 1px solid var(--nd-border);
+  border-radius: 4px;
+  color: var(--nd-muted);
+  font-size: 0.75em;
+  line-height: 1.6;
+  user-select: none;
+}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  findImageSpans,
   findVerbatimSpans,
   matchFootnoteMarkerAt,
   matchImageSpanAt,
@@ -105,5 +106,23 @@ describe('findVerbatimSpans', () => {
   it('returns an empty list for text with nothing to protect', () => {
     expect(findVerbatimSpans('')).toEqual([]);
     expect(findVerbatimSpans('plain prose, no markup')).toEqual([]);
+  });
+});
+
+describe('findImageSpans', () => {
+  it('returns only image spans, in order', () => {
+    const s = 'a ![x](x.png) [^1] $y$ ![z][ref] b';
+    expect(findImageSpans(s).map(([f, t]) => s.slice(f, t))).toEqual([
+      '![x](x.png)',
+      '![z][ref]',
+    ]);
+  });
+
+  it('ignores image-like text inside inline math', () => {
+    expect(findImageSpans('$a ![x](x.png) b$')).toEqual([]);
+  });
+
+  it('returns nothing for plain text', () => {
+    expect(findImageSpans('no images here')).toEqual([]);
   });
 });

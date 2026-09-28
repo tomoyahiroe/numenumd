@@ -32,6 +32,9 @@ numenumd only runs on pages opened with `file://` whose file name ends in `.md`.
 3. When you save, it writes **directly back to the local file you chose**
    through the File System Access API.
 
+Images referenced in the file with a local path are displayed by the browser
+directly from your disk; remote images are never loaded.
+
 All of this happens inside the browser tab. numenumd makes no network requests
 at all. There is no numenumd server, so there is nowhere to send data to.
 

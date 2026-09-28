@@ -9,6 +9,7 @@ import { RawBlock } from './nodes/raw-block';
 import { Frontmatter } from './nodes/frontmatter';
 import { tableExtensions } from './nodes/table';
 import { SlashCommand } from './slash/suggestion';
+import { ImagePreview } from './image-preview';
 import { createMathSpanRegex } from '../markdown/math-spans';
 
 /**
@@ -90,6 +91,8 @@ export function buildExtensions(): Extensions {
     // `createMathSpanRegex()`(math-spans が単一ソースとして提供)を渡して
     // 両者の判定を揃える。
     Mathematics.configure({ regex: createMathSpanRegex() }),
+    // Local image preview over the verbatim `![alt](path)` text (decorations only).
+    ImagePreview,
     MathBlock,
     RawBlock,
     Frontmatter,

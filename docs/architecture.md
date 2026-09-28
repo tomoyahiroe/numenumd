@@ -23,19 +23,19 @@ There is no background service worker, no server and no network access.
 
 ## Directory layout
 
-| Path                 | What it contains                                                                                               |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `manifest.config.ts` | The extension manifest (built by `@crxjs/vite-plugin`); the version comes from `package.json`                  |
-| `src/content/`       | Content-script entry point, the `App` component (header, menu, save handling) and theme logic                  |
-| `src/editor/`        | The Tiptap editor, its extension list and CSS                                                                  |
-| `src/editor/nodes/`  | Custom nodes: math block, raw block, frontmatter, table                                                        |
-| `src/editor/slash/`  | The `/` slash menu (items and suggestion UI)                                                                   |
-| `src/markdown/`      | Markdown parsing (markdown-it → document JSON), serialization (prosemirror-markdown) and formatting (Prettier) |
-| `src/file/`          | Saving through the File System Access API, and the remembered save target                                      |
-| `src/keymap/`        | A small priority-ordered key router shared by the editor and the page                                          |
-| `tests/fixtures/`    | Markdown samples used by round-trip tests                                                                      |
-| `tools/screenshots/` | The harness that generates the README screenshots in `docs/images/`                                            |
-| `scripts/`           | Build helpers: icon generation, and a check that Chrome will accept the built content script                   |
+| Path                 | What it contains                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `manifest.config.ts` | The extension manifest (built by `@crxjs/vite-plugin`); the version comes from `package.json`                                        |
+| `src/content/`       | Content-script entry point, the `App` component (header, menu, save handling) and theme logic                                        |
+| `src/editor/`        | The Tiptap editor, its extension list, the image preview and CSS                                                                     |
+| `src/editor/nodes/`  | Custom nodes: math block, raw block, frontmatter, table                                                                              |
+| `src/editor/slash/`  | The `/` slash menu (items and suggestion UI)                                                                                         |
+| `src/markdown/`      | Markdown parsing (markdown-it → document JSON), serialization (prosemirror-markdown), formatting (Prettier) and image-source helpers |
+| `src/file/`          | Saving through the File System Access API, and the remembered save target                                                            |
+| `src/keymap/`        | A small priority-ordered key router shared by the editor and the page                                                                |
+| `tests/fixtures/`    | Markdown samples used by round-trip tests                                                                                            |
+| `tools/screenshots/` | The harness that generates the README screenshots in `docs/images/`                                                                  |
+| `scripts/`           | Build helpers: icon generation, and a check that Chrome will accept the built content script                                         |
 
 ## Page takeover
 
@@ -143,6 +143,33 @@ All `file://` pages share one storage origin in Chrome, so another local HTML pa
 could read the list of remembered paths; see [PRIVACY.md](../PRIVACY.md). The "⋯"
 menu in the editor header ("記憶した保存先を消す", forget remembered save
 locations) clears the whole record.
+
+## Image preview
+
+`![alt](path)` stays plain text in the document (see
+[Markdown round-trip](#markdown-round-trip)), so saving never changes it. The
+editor shows the image on top of that text with decorations only, in
+`src/editor/image-preview.ts`:
+
+- **Detection**: text nodes are scanned with `findImageSpans`
+  (`src/markdown/verbatim-spans.ts`), which uses the same matcher as the parser and
+  the serializer, so exactly the spans kept verbatim are previewed. Text in code
+  blocks or with the inline-code mark is skipped.
+- **Resolution** (`src/markdown/image-source.ts`, `resolveImageDest`): paths relative
+  to the `.md` file, absolute paths, Windows drive paths, `file:` URLs and
+  `data:image/` URLs are local. `http:`, `https:` and `//…` are remote and **never
+  loaded**: no `<img>` is created for them, so no request can happen. Relative
+  paths only resolve when the page itself is a `file:` URL. Reference images
+  (`![alt][ref]`) are resolved through `[ref]: path` definitions, which the parser
+  keeps as raw blocks.
+- **Rendering**: when the selection doesn't touch the span, an inline decoration
+  hides the source text (it stays in the DOM so the cursor can move into it) and a
+  widget after it shows the `<img>`. When the selection touches the span, the text
+  is shown too. Remote images and files that fail to load show a small badge
+  instead, with the text visible.
+- **Stable widgets**: each widget has a key made from the URL, alt text and title
+  (not the position), so ProseMirror keeps the same `<img>` while you type and
+  images don't reload.
 
 ## Theme
 

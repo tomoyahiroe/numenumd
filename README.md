@@ -56,6 +56,10 @@ extensions from them by default. Without **Allow access to file URLs**, your
   `Tab` (a new row is added after the last cell), add rows and columns with the
   `+` buttons, select a row or column from its grip and delete it with
   `Backspace`. Column alignment (`:---:` etc.) is preserved.
+- **Local images**: `![alt](path)` shows the image from your disk (paths
+  relative to the `.md` file, absolute paths, and `file:` URLs), and the Markdown
+  text reappears while your cursor is inside it so you can edit the path. A
+  missing file shows an "image not found" badge.
 - **Your Markdown is preserved**: raw HTML, link reference definitions, footnote
   definitions and anything else the editor can't show as rich text appear as raw
   Markdown blocks and are saved unchanged. YAML frontmatter is shown in a
@@ -92,6 +96,9 @@ extensions from them by default. Without **Allow access to file URLs**, your
 
 ## Known limitations
 
+- Remote images (`http`/`https` URLs) are not loaded, because numenumd makes no
+  network requests. They stay as text with a "remote image not loaded" badge.
+  HTML `<img>` tags are shown as raw Markdown.
 - The editor's messages and menus are in Japanese (the slash menu items are in
   English).
 - To-do list items display the checkbox and the text on separate lines.

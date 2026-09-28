@@ -99,23 +99,27 @@ extension:
    row or column and `Backspace` deletes it; `Tab` moves between cells and adds a
    row at the end; `Shift+Enter` doesn't add a line break in a cell; `/table`
    inserts a 3×3 table; the saved file is a valid pipe table with alignment kept.
-8. **Raw blocks**: a table with more cells than its header, and raw HTML, show as
+8. **Images**: relative, sibling-folder and absolute image paths display; the
+   text reappears when the cursor moves into it; a missing file shows "image not
+   found"; a remote image shows "remote image not loaded" and DevTools' Network
+   panel shows no request for it; saving leaves image lines unchanged.
+9. **Raw blocks**: a table with more cells than its header, and raw HTML, show as
    raw blocks, can be edited as text, and are saved without losing anything.
-9. **Frontmatter**: shown expanded in a collapsible "Front matter" block, can be
-   collapsed, opens a text editor when clicked, and is saved byte for byte when
-   only the body changes.
-10. **First save and later saves**: the first `Cmd/Ctrl+S` opens the save dialog
+10. **Frontmatter**: shown expanded in a collapsible "Front matter" block, can be
+    collapsed, opens a text editor when clicked, and is saved byte for byte when
+    only the body changes.
+11. **First save and later saves**: the first `Cmd/Ctrl+S` opens the save dialog
     with the file name filled in; later saves are silent (only a toast).
-11. **Remembered save target**: after reloading the tab, saving asks for
+12. **Remembered save target**: after reloading the tab, saving asks for
     permission instead of opening the picker; refusing permission falls back to
     the picker; a renamed or deleted file falls back to the picker; clearing from
     the "⋯" menu makes the next save open the picker again.
-12. **Formatting**: the saved file is Prettier-formatted, and saving again without
+13. **Formatting**: the saved file is Prettier-formatted, and saving again without
     edits changes nothing.
-13. **Dirty state**: `Cmd/Ctrl+S` without edits does nothing; closing a tab with
+14. **Dirty state**: `Cmd/Ctrl+S` without edits does nothing; closing a tab with
     unsaved edits shows a warning; `Cmd/Ctrl+S` works with the focus outside the
     editor.
-14. **Conflicts**: if another app changes the file after a save, the next
+15. **Conflicts**: if another app changes the file after a save, the next
     `Cmd/Ctrl+S` asks before overwriting; cancelling leaves the file as the other
     app wrote it; confirming overwrites it.
 

@@ -176,6 +176,24 @@ body {
   list-style: none;
   padding-left: 0;
 }
+/* TaskItem の NodeView は `li > label(チェックボックス) + div(本文)` を作る。
+   div はブロック要素なので、横並びにしないと本文がチェックボックスの下の行に落ちる。 */
+.numenumd-editor ul[data-type='taskList'] > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+}
+.numenumd-editor ul[data-type='taskList'] > li > label {
+  flex: 0 0 auto;
+  user-select: none;
+}
+.numenumd-editor ul[data-type='taskList'] > li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.numenumd-editor ul[data-type='taskList'] > li > div > p {
+  margin: 0;
+}
 .numenumd-editor a {
   color: inherit;
 }
